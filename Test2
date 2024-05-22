@@ -28,19 +28,36 @@ diff_data AS (
         LEAD(combined_column) OVER (PARTITION BY fabid, jobid ORDER BY jobver) AS next_combined_column
     FROM
         combined_data
+),
+changes AS (
+    SELECT
+        fabid,
+        jobid,
+        jobver AS version_1,
+        combined_column AS combined_column_1,
+        next_jobver AS version_2,
+        next_combined_column AS combined_column_2,
+        CASE 
+            WHEN combined_column IS NULL THEN next_combined_column
+            WHEN next_combined_column IS NULL THEN combined_column
+            ELSE REGEXP_REPLACE(next_combined_column || ',' || combined_column, '(\b[^,]+,\b)(?=.*\1)', '') 
+        END AS difference
+    FROM
+        diff_data
+    WHERE
+        combined_column <> next_combined_column
 )
 SELECT
     fabid,
     jobid,
-    jobver AS version_1,
-    combined_column AS combined_column_1,
-    next_jobver AS version_2,
-    next_combined_column AS combined_column_2
+    version_1,
+    combined_column_1,
+    version_2,
+    combined_column_2,
+    difference
 FROM
-    diff_data
-WHERE
-    combined_column <> next_combined_column
+    changes
 ORDER BY
     fabid,
     jobid,
-    jobver;
+    version_1;
