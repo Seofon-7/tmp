@@ -1,18 +1,46 @@
-SELECT
-    fabid,
-    jobid,
-    jobver,
-    LISTAGG(chart_rule, ',') WITHIN GROUP (ORDER BY chart_rule) AS combined_column
-FROM (
-    SELECT DISTINCT
+WITH combined_data AS (
+    SELECT
         fabid,
         jobid,
         jobver,
-        chart_type || ',' || ruleid AS chart_rule
+        LISTAGG(chart_rule, ',') WITHIN GROUP (ORDER BY chart_rule) AS combined_column
+    FROM (
+        SELECT DISTINCT
+            fabid,
+            jobid,
+            jobver,
+            chart_type || ',' || ruleid AS chart_rule
+        FROM
+            rule_action
+    )
+    GROUP BY
+        fabid,
+        jobid,
+        jobver
+),
+diff_data AS (
+    SELECT
+        fabid,
+        jobid,
+        jobver,
+        combined_column,
+        LEAD(jobver) OVER (PARTITION BY fabid, jobid ORDER BY jobver) AS next_jobver,
+        LEAD(combined_column) OVER (PARTITION BY fabid, jobid ORDER BY jobver) AS next_combined_column
     FROM
-        rule_action
+        combined_data
 )
-GROUP BY
+SELECT
+    fabid,
+    jobid,
+    jobver AS version_1,
+    combined_column AS combined_column_1,
+    next_jobver AS version_2,
+    next_combined_column AS combined_column_2
+FROM
+    diff_data
+WHERE
+    combined_column <> next_combined_column
+ORDER BY
     fabid,
     jobid,
     jobver;
