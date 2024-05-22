@@ -1,11 +1,18 @@
 SELECT
-    ra.fabid,
-    ra.jobid,
-    ra.jobver,
-    LISTAGG(ra.chart_type || ',' || ra.ruleid, ',') WITHIN GROUP (ORDER BY ra.chart_type) AS combined_column
-FROM
-    rule_action ra
+    fabid,
+    jobid,
+    jobver,
+    LISTAGG(chart_rule, ',') WITHIN GROUP (ORDER BY chart_rule) AS combined_column
+FROM (
+    SELECT DISTINCT
+        fabid,
+        jobid,
+        jobver,
+        chart_type || ',' || ruleid AS chart_rule
+    FROM
+        rule_action
+)
 GROUP BY
-    ra.fabid,
-    ra.jobid,
-    ra.jobver;
+    fabid,
+    jobid,
+    jobver;
