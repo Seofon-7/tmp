@@ -37,11 +37,33 @@ changes AS (
         combined_column AS combined_column_1,
         next_jobver AS version_2,
         next_combined_column AS combined_column_2,
-        CASE 
-            WHEN combined_column IS NULL THEN next_combined_column
-            WHEN next_combined_column IS NULL THEN combined_column
-            ELSE REGEXP_REPLACE(next_combined_column || ',' || combined_column, '(\b[^,]+,\b)(?=.*\1)', '') 
-        END AS difference
+        (
+            SELECT LISTAGG(elem, ',') WITHIN GROUP (ORDER BY elem) FROM (
+                SELECT elem FROM (
+                    SELECT REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) AS elem
+                    FROM dual
+                    CONNECT BY REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) IS NOT NULL
+                )
+                MINUS
+                SELECT elem FROM (
+                    SELECT REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) AS elem
+                    FROM dual
+                    CONNECT BY REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) IS NOT NULL
+                )
+                UNION ALL
+                SELECT elem FROM (
+                    SELECT REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) AS elem
+                    FROM dual
+                    CONNECT BY REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) IS NOT NULL
+                )
+                MINUS
+                SELECT elem FROM (
+                    SELECT REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) AS elem
+                    FROM dual
+                    CONNECT BY REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) IS NOT NULL
+                )
+            )
+        ) AS difference
     FROM
         diff_data
     WHERE
