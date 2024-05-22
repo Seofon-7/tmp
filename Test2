@@ -1,27 +1,11 @@
-using Polly;
-using Polly.Retry;
-using System;
-using System.Net.Http;
-using System.Threading.Tasks;
-
-public class WebServiceClient
-{
-    private static readonly HttpClient _httpClient = new HttpClient();
-
-    // 定义一个重试策略，最多重试3次，每次重试之间等待2秒
-    private static readonly AsyncRetryPolicy _retryPolicy = Policy
-        .Handle<HttpRequestException>()
-        .OrResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
-        .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(2));
-
-    public async Task<string> CallWebServiceWithRetryAsync(string url)
-    {
-        // 使用重试策略执行Web服务调用
-        return await _retryPolicy.ExecuteAsync(async () =>
-        {
-            HttpResponseMessage response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync();
-        });
-    }
-}
+SELECT
+    ra.fabid,
+    ra.jobid,
+    ra.jobver,
+    LISTAGG(ra.chart_type || ',' || ra.ruleid, ',') WITHIN GROUP (ORDER BY ra.chart_type) AS combined_column
+FROM
+    rule_action ra
+GROUP BY
+    ra.fabid,
+    ra.jobid,
+    ra.jobver;
