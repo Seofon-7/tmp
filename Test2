@@ -1,85 +1,46 @@
-WITH combined_data AS (
-    SELECT
-        fabid,
-        jobid,
-        jobver,
-        LISTAGG(chart_rule, ',') WITHIN GROUP (ORDER BY chart_rule) AS combined_column
-    FROM (
-        SELECT DISTINCT
-            fabid,
-            jobid,
-            jobver,
-            chart_type || ',' || ruleid AS chart_rule
-        FROM
-            rule_action
-    )
-    GROUP BY
-        fabid,
-        jobid,
-        jobver
-),
-diff_data AS (
-    SELECT
-        fabid,
-        jobid,
-        jobver,
-        combined_column,
-        LEAD(jobver) OVER (PARTITION BY fabid, jobid ORDER BY jobver) AS next_jobver,
-        LEAD(combined_column) OVER (PARTITION BY fabid, jobid ORDER BY jobver) AS next_combined_column
-    FROM
-        combined_data
-),
-changes AS (
-    SELECT
-        fabid,
-        jobid,
-        jobver AS version_1,
-        combined_column AS combined_column_1,
-        next_jobver AS version_2,
-        next_combined_column AS combined_column_2,
-        (
-            SELECT LISTAGG(elem, ',') WITHIN GROUP (ORDER BY elem) FROM (
-                SELECT elem FROM (
-                    SELECT REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) AS elem
-                    FROM dual
-                    CONNECT BY REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) IS NOT NULL
-                )
-                MINUS
-                SELECT elem FROM (
-                    SELECT REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) AS elem
-                    FROM dual
-                    CONNECT BY REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) IS NOT NULL
-                )
-                UNION ALL
-                SELECT elem FROM (
-                    SELECT REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) AS elem
-                    FROM dual
-                    CONNECT BY REGEXP_SUBSTR(next_combined_column, '[^,]+', 1, LEVEL) IS NOT NULL
-                )
-                MINUS
-                SELECT elem FROM (
-                    SELECT REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) AS elem
-                    FROM dual
-                    CONNECT BY REGEXP_SUBSTR(combined_column_1, '[^,]+', 1, LEVEL) IS NOT NULL
-                )
-            )
-        ) AS difference
-    FROM
-        diff_data
-    WHERE
-        combined_column <> next_combined_column
-)
-SELECT
-    fabid,
-    jobid,
-    version_1,
-    combined_column_1,
-    version_2,
-    combined_column_2,
-    difference
-FROM
-    changes
-ORDER BY
-    fabid,
-    jobid,
-    version_1
+在 Oracle 数据库中，要检查某个视图（view）或物化视图（mview）是否使用了某个数据库链接（dblink），可以通过查询数据字典视图 `ALL_VIEWS` 和 `ALL_MVIEWS` 来实现。以下是详细步骤：
+
+### 检查普通视图
+1. **查询 `ALL_VIEWS` 视图**：该视图包含了数据库中所有视图的定义。
+
+   ```sql
+   SELECT VIEW_NAME, TEXT
+   FROM ALL_VIEWS
+   WHERE UPPER(TEXT) LIKE '%<DBLINK_NAME>%';
+   ```
+
+   其中，`<DBLINK_NAME>` 是你要查找的数据库链接的名称。需要将其替换为实际的数据库链接名称，并确保链接名称的大小写正确。
+
+### 检查物化视图
+2. **查询 `ALL_MVIEWS` 视图**：该视图包含了数据库中所有物化视图的定义。
+
+   ```sql
+   SELECT MVIEW_NAME, QUERY
+   FROM ALL_MVIEWS
+   WHERE UPPER(QUERY) LIKE '%<DBLINK_NAME>%';
+   ```
+
+   同样，将 `<DBLINK_NAME>` 替换为实际的数据库链接名称，并确保链接名称的大小写正确。
+
+### 示例
+假设你想检查的数据库链接名称是 `MY_DBLINK`，可以使用以下 SQL 语句：
+
+#### 检查视图
+```sql
+SELECT VIEW_NAME, TEXT
+FROM ALL_VIEWS
+WHERE UPPER(TEXT) LIKE '%MY_DBLINK%';
+```
+
+#### 检查物化视图
+```sql
+SELECT MVIEW_NAME, QUERY
+FROM ALL_MVIEWS
+WHERE UPPER(QUERY) LIKE '%MY_DBLINK%';
+```
+
+### 注意事项
+- 使用 `UPPER()` 函数是为了确保查询不区分大小写。
+- `%` 是 SQL 中的通配符，用于匹配任意长度的字符。
+
+通过以上步骤，你可以查找出哪些视图或物化视图使用了指定的数据库链接。
