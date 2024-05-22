@@ -82,4 +82,4 @@ FROM
 ORDER BY
     fabid,
     jobid,
-    version_1;
+    version_1
