@@ -1,46 +1,74 @@
-在 Oracle 数据库中，要检查某个视图（view）或物化视图（mview）是否使用了某个数据库链接（dblink），可以通过查询数据字典视图 `ALL_VIEWS` 和 `ALL_MVIEWS` 来实现。以下是详细步骤：
-
-### 检查普通视图
-1. **查询 `ALL_VIEWS` 视图**：该视图包含了数据库中所有视图的定义。
-
-   ```sql
-   SELECT VIEW_NAME, TEXT
-   FROM ALL_VIEWS
-   WHERE UPPER(TEXT) LIKE '%<DBLINK_NAME>%';
-   ```
-
-   其中，`<DBLINK_NAME>` 是你要查找的数据库链接的名称。需要将其替换为实际的数据库链接名称，并确保链接名称的大小写正确。
-
-### 检查物化视图
-2. **查询 `ALL_MVIEWS` 视图**：该视图包含了数据库中所有物化视图的定义。
-
-   ```sql
-   SELECT MVIEW_NAME, QUERY
-   FROM ALL_MVIEWS
-   WHERE UPPER(QUERY) LIKE '%<DBLINK_NAME>%';
-   ```
-
-   同样，将 `<DBLINK_NAME>` 替换为实际的数据库链接名称，并确保链接名称的大小写正确。
-
-### 示例
-假设你想检查的数据库链接名称是 `MY_DBLINK`，可以使用以下 SQL 语句：
-
-#### 检查视图
-```sql
-SELECT VIEW_NAME, TEXT
-FROM ALL_VIEWS
-WHERE UPPER(TEXT) LIKE '%MY_DBLINK%';
-```
-
-#### 检查物化视图
-```sql
-SELECT MVIEW_NAME, QUERY
-FROM ALL_MVIEWS
-WHERE UPPER(QUERY) LIKE '%MY_DBLINK%';
-```
-
-### 注意事项
-- 使用 `UPPER()` 函数是为了确保查询不区分大小写。
-- `%` 是 SQL 中的通配符，用于匹配任意长度的字符。
-
-通过以上步骤，你可以查找出哪些视图或物化视图使用了指定的数据库链接。
+WITH CombinedData AS (
+    SELECT
+        ra.fabid,
+        ra.jobid,
+        ra.jobver,
+        ra.chart_type,
+        LISTAGG(ra.ruleid, ',') WITHIN GROUP (ORDER BY ra.ruleid) AS ruleids
+    FROM
+        rule_action ra
+    GROUP BY
+        ra.fabid, ra.jobid, ra.jobver, ra.chart_type
+),
+CombinedChartTypeRuleid AS (
+    SELECT
+        fabid,
+        jobid,
+        jobver,
+        LISTAGG(chart_type || ':' || ruleids, ',') WITHIN GROUP (ORDER BY chart_type) AS combined_chart_type_ruleid
+    FROM
+        CombinedData
+    GROUP BY
+        fabid, jobid, jobver
+),
+VersionPairs AS (
+    SELECT
+        c1.fabid,
+        c1.jobid,
+        c1.jobver AS jobver1,
+        c2.jobver AS jobver2,
+        c1.combined_chart_type_ruleid AS combined_chart_type_ruleid1,
+        c2.combined_chart_type_ruleid AS combined_chart_type_ruleid2
+    FROM
+        CombinedChartTypeRuleid c1
+        JOIN CombinedChartTypeRuleid c2 ON c1.fabid = c2.fabid AND c1.jobid = c2.jobid AND c1.jobver < c2.jobver
+),
+Differences AS (
+    SELECT
+        vp.fabid,
+        vp.jobid,
+        vp.jobver1,
+        vp.jobver2,
+        vp.combined_chart_type_ruleid1,
+        vp.combined_chart_type_ruleid2,
+        CASE
+            WHEN ra1.combined_chart_type_ruleid IS NOT NULL AND ra2.combined_chart_type_ruleid IS NULL THEN 'Removed: ' || ra1.combined_chart_type_ruleid
+            WHEN ra1.combined_chart_type_ruleid IS NULL AND ra2.combined_chart_type_ruleid IS NOT NULL THEN 'Added: ' || ra2.combined_chart_type_ruleid
+            ELSE 'Changed from ' || ra1.combined_chart_type_ruleid || ' to ' || ra2.combined_chart_type_ruleid
+        END AS difference_details
+    FROM
+        VersionPairs vp
+        LEFT JOIN CombinedChartTypeRuleid ra1 ON vp.fabid = ra1.fabid AND vp.jobid = ra1.jobid AND vp.jobver1 = ra1.jobver
+        LEFT JOIN CombinedChartTypeRuleid ra2 ON vp.fabid = ra2.fabid AND vp.jobid = ra2.jobid AND vp.jobver2 = ra2.jobver
+    WHERE
+        ra1.combined_chart_type_ruleid IS DISTINCT FROM ra2.combined_chart_type_ruleid
+)
+SELECT
+    fabid,
+    jobid,
+    jobver1,
+    jobver2,
+    combined_chart_type_ruleid1,
+    combined_chart_type_ruleid2,
+    LISTAGG(difference_details, ', ') WITHIN GROUP (ORDER BY difference_details) AS differences
+FROM
+    Differences
+GROUP BY
+    fabid,
+    jobid,
+    jobver1,
+    jobver2,
+    combined_chart_type_ruleid1,
+    combined_chart_type_ruleid2
+ORDER BY
+    fabid, jobid, jobver1, jobver2;
