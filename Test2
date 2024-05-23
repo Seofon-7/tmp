@@ -1,44 +1,44 @@
 WITH CombinedData AS (
     SELECT
-        ra.fabid,
-        ra.jobid,
-        ra.jobver,
+        ra.fab_id,
+        ra.job_id,
+        ra.job_ver,
         ra.chart_type,
-        LISTAGG(ra.ruleid, ',') WITHIN GROUP (ORDER BY ra.ruleid) AS ruleids
+        LISTAGG(ra.rule_id, ',') WITHIN GROUP (ORDER BY ra.rule_id) AS ruleids
     FROM
-        rule_action ra
+        spc_job_rule_action_his ra
     GROUP BY
-        ra.fabid, ra.jobid, ra.jobver, ra.chart_type
+        ra.fab_id, ra.job_id, ra.job_ver, ra.chart_type
 ),
 CombinedChartTypeRuleid AS (
     SELECT
-        fabid,
-        jobid,
-        jobver,
+        fab_id,
+        job_id,
+        job_ver,
         LISTAGG(chart_type || ':' || ruleids, ',') WITHIN GROUP (ORDER BY chart_type) AS combined_chart_type_ruleid
     FROM
         CombinedData
     GROUP BY
-        fabid, jobid, jobver
+        fab_id, job_id, job_ver
 ),
 VersionPairs AS (
     SELECT
-        c1.fabid,
-        c1.jobid,
-        c1.jobver AS jobver1,
-        c2.jobver AS jobver2,
+        c1.fab_id,
+        c1.job_id,
+        c1.job_ver AS job_ver1,
+        c2.job_ver AS job_ver2,
         c1.combined_chart_type_ruleid AS combined_chart_type_ruleid1,
         c2.combined_chart_type_ruleid AS combined_chart_type_ruleid2
     FROM
         CombinedChartTypeRuleid c1
-        JOIN CombinedChartTypeRuleid c2 ON c1.fabid = c2.fabid AND c1.jobid = c2.jobid AND c1.jobver < c2.jobver
+        JOIN CombinedChartTypeRuleid c2 ON c1.fab_id = c2.fab_id AND c1.job_id = c2.job_id AND c1.job_ver < c2.job_ver
 ),
 Differences AS (
     SELECT
-        vp.fabid,
-        vp.jobid,
-        vp.jobver1,
-        vp.jobver2,
+        vp.fab_id,
+        vp.job_id,
+        vp.job_ver1,
+        vp.job_ver2,
         vp.combined_chart_type_ruleid1,
         vp.combined_chart_type_ruleid2,
         CASE
@@ -48,27 +48,37 @@ Differences AS (
         END AS difference_details
     FROM
         VersionPairs vp
-        LEFT JOIN CombinedChartTypeRuleid ra1 ON vp.fabid = ra1.fabid AND vp.jobid = ra1.jobid AND vp.jobver1 = ra1.jobver
-        LEFT JOIN CombinedChartTypeRuleid ra2 ON vp.fabid = ra2.fabid AND vp.jobid = ra2.jobid AND vp.jobver2 = ra2.jobver
+        LEFT JOIN CombinedChartTypeRuleid ra1 ON vp.fab_id = ra1.fab_id AND vp.job_id = ra1.job_id AND vp.job_ver1 = ra1.job_ver
+        LEFT JOIN CombinedChartTypeRuleid ra2 ON vp.fab_id = ra2.fab_id AND vp.job_id = ra2.job_id AND vp.job_ver2 = ra2.job_ver
     WHERE
         ra1.combined_chart_type_ruleid IS DISTINCT FROM ra2.combined_chart_type_ruleid
+),
+FilteredJobs AS (
+    SELECT
+        job_id
+    FROM
+        spc_job_setting
+    WHERE
+        update_time BETWEEN TO_DATE('2023-01-01', 'YYYY-MM-DD') AND TO_DATE('2024-03-31', 'YYYY-MM-DD')
 )
 SELECT
-    fabid,
-    jobid,
-    jobver1,
-    jobver2,
+    fab_id,
+    job_id,
+    job_ver1,
+    job_ver2,
     combined_chart_type_ruleid1,
     combined_chart_type_ruleid2,
     LISTAGG(difference_details, ', ') WITHIN GROUP (ORDER BY difference_details) AS differences
 FROM
-    Differences
+    Differences d
+WHERE
+    d.job_id IN (SELECT job_id FROM FilteredJobs)
 GROUP BY
-    fabid,
-    jobid,
-    jobver1,
-    jobver2,
+    fab_id,
+    job_id,
+    job_ver1,
+    job_ver2,
     combined_chart_type_ruleid1,
     combined_chart_type_ruleid2
 ORDER BY
-    fabid, jobid, jobver1, jobver2;
+    fab_id, job_id, job_ver1, job_ver2;
