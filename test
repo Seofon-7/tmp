@@ -53,7 +53,7 @@ Differences AS (
         LEFT JOIN spc_job_setting ra1 ON vp.fab_id = ra1.fab_id AND vp.job_id = ra1.job_id AND vp.job_ver1 = ra1.job_ver
         LEFT JOIN spc_job_setting ra2 ON vp.fab_id = ra2.fab_id AND vp.job_id = ra2.job_id AND vp.job_ver2 = ra2.job_ver
     WHERE
-        vp.combined_chart_type_ruleid1 IS DISTINCT FROM vp.combined_chart_type_ruleid2
+        (vp.combined_chart_type_ruleid1 <> vp.combined_chart_type_ruleid2 OR vp.combined_chart_type_ruleid1 IS NULL OR vp.combined_chart_type_ruleid2 IS NULL)
         AND ra1.update_time BETWEEN TO_DATE('2023-01-01', 'YYYY-MM-DD') AND TO_DATE('2024-03-31', 'YYYY-MM-DD')
         AND ra2.update_time BETWEEN TO_DATE('2023-01-01', 'YYYY-MM-DD') AND TO_DATE('2024-03-31', 'YYYY-MM-DD')
 )
