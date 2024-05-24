@@ -1,0 +1,82 @@
+WITH CombinedData AS (
+    SELECT
+        ra.fab_id,
+        ra.job_id,
+        ra.job_ver,
+        ra.chart_type,
+        LISTAGG(ra.rule_id, ',') WITHIN GROUP (ORDER BY ra.rule_id) AS ruleids
+    FROM
+        spc_job_rule_action_his ra
+    GROUP BY
+        ra.fab_id, ra.job_id, ra.job_ver, ra.chart_type
+),
+CombinedChartTypeRuleid AS (
+    SELECT
+        fab_id,
+        job_id,
+        job_ver,
+        LISTAGG(chart_type || ':' || ruleids, ',') WITHIN GROUP (ORDER BY chart_type) AS combined_chart_type_ruleid
+    FROM
+        CombinedData
+    GROUP BY
+        fab_id, job_id, job_ver
+),
+VersionPairs AS (
+    SELECT
+        c1.fab_id,
+        c1.job_id,
+        c1.job_ver AS job_ver1,
+        c2.job_ver AS job_ver2,
+        c1.combined_chart_type_ruleid AS combined_chart_type_ruleid1,
+        c2.combined_chart_type_ruleid AS combined_chart_type_ruleid2
+    FROM
+        CombinedChartTypeRuleid c1
+        JOIN CombinedChartTypeRuleid c2 ON c1.fab_id = c2.fab_id AND c1.job_id = c2.job_id AND c1.job_ver < c2.job_ver
+),
+Differences AS (
+    SELECT
+        vp.fab_id,
+        vp.job_id,
+        vp.job_ver1,
+        vp.job_ver2,
+        vp.combined_chart_type_ruleid1,
+        vp.combined_chart_type_ruleid2,
+        ra1.update_time AS update_time1,
+        ra2.update_time AS update_time2,
+        CASE
+            WHEN vp.combined_chart_type_ruleid1 IS NOT NULL AND vp.combined_chart_type_ruleid2 IS NULL THEN 'Removed: ' || vp.combined_chart_type_ruleid1
+            WHEN vp.combined_chart_type_ruleid1 IS NULL AND vp.combined_chart_type_ruleid2 IS NOT NULL THEN 'Added: ' || vp.combined_chart_type_ruleid2
+            ELSE 'Changed from ' || vp.combined_chart_type_ruleid1 || ' to ' || vp.combined_chart_type_ruleid2
+        END AS difference_details
+    FROM
+        VersionPairs vp
+        LEFT JOIN spc_job_setting ra1 ON vp.fab_id = ra1.fab_id AND vp.job_id = ra1.job_id AND vp.job_ver1 = ra1.job_ver
+        LEFT JOIN spc_job_setting ra2 ON vp.fab_id = ra2.fab_id AND vp.job_id = ra2.job_id AND vp.job_ver2 = ra2.job_ver
+    WHERE
+        vp.combined_chart_type_ruleid1 IS DISTINCT FROM vp.combined_chart_type_ruleid2
+        AND ra1.update_time BETWEEN TO_DATE('2023-01-01', 'YYYY-MM-DD') AND TO_DATE('2024-03-31', 'YYYY-MM-DD')
+        AND ra2.update_time BETWEEN TO_DATE('2023-01-01', 'YYYY-MM-DD') AND TO_DATE('2024-03-31', 'YYYY-MM-DD')
+)
+SELECT
+    fab_id,
+    job_id,
+    job_ver1,
+    job_ver2,
+    update_time1,
+    update_time2,
+    combined_chart_type_ruleid1,
+    combined_chart_type_ruleid2,
+    LISTAGG(difference_details, ', ') WITHIN GROUP (ORDER BY difference_details) AS differences
+FROM
+    Differences
+GROUP BY
+    fab_id,
+    job_id,
+    job_ver1,
+    job_ver2,
+    update_time1,
+    update_time2,
+    combined_chart_type_ruleid1,
+    combined_chart_type_ruleid2
+ORDER BY
+    fab_id, job_id, job_ver1, job_ver2;
