@@ -1,84 +1,143 @@
-WITH CombinedData AS (
-    SELECT
-        ra.fab_id,
-        ra.job_id,
-        ra.job_ver,
-        ra.chart_type,
-        LISTAGG(ra.rule_id, ',') WITHIN GROUP (ORDER BY ra.rule_id) AS ruleids
-    FROM
-        spc_job_rule_action_his ra
-    GROUP BY
-        ra.fab_id, ra.job_id, ra.job_ver, ra.chart_type
-),
-CombinedChartTypeRuleid AS (
-    SELECT
-        fab_id,
-        job_id,
-        job_ver,
-        LISTAGG(chart_type || ':' || ruleids, ',') WITHIN GROUP (ORDER BY chart_type) AS combined_chart_type_ruleid
-    FROM
-        CombinedData
-    GROUP BY
-        fab_id, job_id, job_ver
-),
-VersionPairs AS (
-    SELECT
-        c1.fab_id,
-        c1.job_id,
-        c1.job_ver AS job_ver1,
-        c2.job_ver AS job_ver2,
-        c1.combined_chart_type_ruleid AS combined_chart_type_ruleid1,
-        c2.combined_chart_type_ruleid AS combined_chart_type_ruleid2
-    FROM
-        CombinedChartTypeRuleid c1
-        JOIN CombinedChartTypeRuleid c2 ON c1.fab_id = c2.fab_id AND c1.job_id = c2.job_id AND c1.job_ver < c2.job_ver
-),
-Differences AS (
-    SELECT
-        vp.fab_id,
-        vp.job_id,
-        vp.job_ver1,
-        vp.job_ver2,
-        vp.combined_chart_type_ruleid1,
-        vp.combined_chart_type_ruleid2,
-        CASE
-            WHEN ra1.combined_chart_type_ruleid IS NOT NULL AND ra2.combined_chart_type_ruleid IS NULL THEN 'Removed: ' || ra1.combined_chart_type_ruleid
-            WHEN ra1.combined_chart_type_ruleid IS NULL AND ra2.combined_chart_type_ruleid IS NOT NULL THEN 'Added: ' || ra2.combined_chart_type_ruleid
-            ELSE 'Changed from ' || ra1.combined_chart_type_ruleid || ' to ' || ra2.combined_chart_type_ruleid
-        END AS difference_details
-    FROM
-        VersionPairs vp
-        LEFT JOIN CombinedChartTypeRuleid ra1 ON vp.fab_id = ra1.fab_id AND vp.job_id = ra1.job_id AND vp.job_ver1 = ra1.job_ver
-        LEFT JOIN CombinedChartTypeRuleid ra2 ON vp.fab_id = ra2.fab_id AND vp.job_id = ra2.job_id AND vp.job_ver2 = ra2.job_ver
-    WHERE
-        ra1.combined_chart_type_ruleid IS DISTINCT FROM ra2.combined_chart_type_ruleid
-),
-FilteredJobs AS (
-    SELECT
-        job_id
-    FROM
-        spc_job_setting
-    WHERE
-        update_time BETWEEN TO_DATE('2023-01-01', 'YYYY-MM-DD') AND TO_DATE('2024-03-31', 'YYYY-MM-DD')
-)
-SELECT
-    fab_id,
-    job_id,
-    job_ver1,
-    job_ver2,
-    combined_chart_type_ruleid1,
-    combined_chart_type_ruleid2,
-    LISTAGG(difference_details, ', ') WITHIN GROUP (ORDER BY difference_details) AS differences
-FROM
-    Differences d
-WHERE
-    d.job_id IN (SELECT job_id FROM FilteredJobs)
-GROUP BY
-    fab_id,
-    job_id,
-    job_ver1,
-    job_ver2,
-    combined_chart_type_ruleid1,
-    combined_chart_type_ruleid2
-ORDER BY
-    fab_id, job_id, job_ver1, job_ver2;
+要將 `.ppt` 和 `.xls` 檔案以 BLOB 形式存入 Oracle 資料庫，您需要進行以下步驟：
+
+### 後端 (.NET 4.6.2)
+
+1. **上傳檔案並存入 Oracle：**
+
+   - 使用 ADO.NET 或其他資料庫連接方法，將檔案內容以 BLOB 形式存入資料庫。
+   - 範例程式碼：
+     ```csharp
+     [HttpPost]
+     public IHttpActionResult UploadFile()
+     {
+         var httpRequest = HttpContext.Current.Request;
+         var postedFile = httpRequest.Files["file"];
+         var id = httpRequest.Form["id"];
+
+         if (postedFile != null && postedFile.ContentLength > 0)
+         {
+             using (var connection = new OracleConnection("your_connection_string"))
+             {
+                 connection.Open();
+                 using (var command = new OracleCommand("UPDATE customer_special SET file_data = :fileData WHERE id = :id", connection))
+                 {
+                     command.Parameters.Add(new OracleParameter("fileData", OracleDbType.Blob)).Value = postedFile.InputStream;
+                     command.Parameters.Add(new OracleParameter("id", OracleDbType.Int32)).Value = Convert.ToInt32(id);
+                     
+                     command.ExecuteNonQuery();
+                 }
+             }
+
+             return Ok(new { success = true });
+         }
+
+         return BadRequest(new { success = false });
+     }
+     ```
+
+2. **下載檔案從 Oracle：**
+
+   - 從資料庫檢索 BLOB 並返回給用戶端。
+   - 範例程式碼：
+     ```csharp
+     [HttpGet]
+     public IHttpActionResult DownloadFile(int id)
+     {
+         using (var connection = new OracleConnection("your_connection_string"))
+         {
+             connection.Open();
+             using (var command = new OracleCommand("SELECT file_data FROM customer_special WHERE id = :id", connection))
+             {
+                 command.Parameters.Add(new OracleParameter("id", OracleDbType.Int32)).Value = id;
+
+                 var reader = command.ExecuteReader();
+                 if (reader.Read())
+                 {
+                     var blob = reader.GetOracleBlob(0);
+                     byte[] fileData = blob.Value;
+
+                     var result = new HttpResponseMessage(HttpStatusCode.OK)
+                     {
+                         Content = new ByteArrayContent(fileData)
+                     };
+                     result.Content.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment")
+                     {
+                         FileName = "downloaded_file.ppt" // 或 xls，根據實際檔案類型
+                     };
+                     result.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+                     return ResponseMessage(result);
+                 }
+             }
+         }
+
+         return NotFound();
+     }
+     ```
+
+### 前端 (Vue 2.6)
+
+1. **上傳檔案：**
+
+   - 使用 `FormData` 將檔案發送到後端。
+   ```javascript
+   methods: {
+     HandleFileChange(event) {
+       const file = event.target.files[0];
+       this.selectedFile = file;
+       this.data.FILE_NAME = file.name;
+     },
+
+     uploadFile(id) {
+       if (!this.selectedFile) {
+         this.$message.error('請選擇檔案');
+         return;
+       }
+
+       const formData = new FormData();
+       formData.append('file', this.selectedFile);
+       formData.append('id', id);
+
+       const apiurl = this.Parse.ApiUrl('BaseData', 'UploadFile');
+       this.Tools.CallApi(apiurl.url, apiurl.method, formData, (response) => {
+         if (response.success) {
+           this.$message.success('檔案上傳成功');
+         } else {
+           this.$message.error('檔案上傳失敗');
+         }
+       });
+     }
+   }
+   ```
+
+2. **下載檔案：**
+
+   - 呼叫後端 API 並處理返回的 BLOB。
+   ```javascript
+   methods: {
+     downloadFile(id) {
+       const apiurl = this.Parse.ApiUrl('BaseData', 'DownloadFile');
+       this.Tools.CallApi(apiurl.url, apiurl.method, { id }, (response) => {
+         if (response.success) {
+           const url = URL.createObjectURL(new Blob([response.data]));
+           const link = document.createElement('a');
+           link.href = url;
+           link.setAttribute('download', response.fileName);
+           document.body.appendChild(link);
+           link.click();
+           link.remove();
+         } else {
+           this.$message.error('檔案下載失敗');
+         }
+       });
+     }
+   }
+   ```
+
+### 總結
+
+- 在 Oracle 中使用 BLOB 欄位來儲存檔案資料。
+- 後端處理檔案上傳和下載邏輯，並與資料庫互動。
+- 前端負責檔案選擇、上傳和下載操作。
+
+確保您的資料庫連接字串和查詢語句正確無誤。
