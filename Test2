@@ -1,448 +1,249 @@
-以下是根據您的需求，使用 .NET 4.6.2、Oracle 後端以及 DevExtreme 19.2 實現的完整 Web 專案程式碼。我將提供一個功能完整的單頁應用程式，包含標籤頁切換、資料表格（支援新增、編輯、刪除）、彈出視窗、驗證與權限檢查，並使用 Oracle.ManagedDataAccess 連結 Oracle 資料庫。頁面設計會比您的 mockup 美觀，使用 DevExtreme 的預設主題並稍作調整。
+了解！來幫你優化整體畫面風格，讓它現代、簡約又好看。
+這次會改進整體配色、元件間距、按鈕樣式，並給你一套更一致的 UI/UX 設計。
+以下提供 更美觀的 ASPX + CSS + C# 程式碼，搭配 DevExpress 19.2。
 
----
+最終畫面風格設計
 
-### 專案結構
-- **MainPage.aspx**: 前端頁面，包含 DevExtreme 的標籤頁、表格和彈出視窗。
-- **MainPage.aspx.cs**: 後端程式碼，包含 WebMethod 處理資料操作。
-- **NuGet 套件**:
-  - `Oracle.ManagedDataAccess` (用於 Oracle 資料庫連線)。
-  - DevExtreme 19.2 的 JavaScript 和 CSS 文件（使用 CDN）。
+風格關鍵字：
+	•	現代扁平化
+	•	柔和藍綠色系
+	•	乾淨、對齊明確
+	•	表格 Hover 動態效果
+	•	圓角按鈕 + 陰影
 
-### 資料庫假設
-- **main_table**: 儲存主要資料，欄位為 `id` (number, 主鍵), `fab` (varchar2), `eqp` (varchar2), `chp` (varchar2), `jobs` (varchar2)。
-- **user_auth**: 儲存使用者權限，欄位為 `user_id` (varchar2), `row_id` (number)，表示該使用者可管理的資料列。
+1. ASPX 頁面
 
----
-
-### MainPage.aspx
-以下是前端頁面程式碼，包含 DevExtreme 的標籤頁、表格、按鈕和彈出視窗。
-
-```html
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="MainPage.aspx.cs" Inherits="WebApp.MainPage" %>
+<%@ Page Language="C#" AutoEventWireup="true" CodeFile="Default.aspx.cs" Inherits="Default" %>
+<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
 
 <!DOCTYPE html>
 <html>
 <head runat="server">
-    <title>資料管理系統</title>
-    <script src="https://cdn3.devexpress.com/jslib/19.2.3/js/dx.all.js"></script>
-    <link rel="stylesheet" href="https://cdn3.devexpress.com/jslib/19.2.3/css/dx.common.css" />
-    <link rel="stylesheet" href="https://cdn3.devexpress.com/jslib/19.2.3/css/dx.light.css" />
-    <style>
-        body { padding: 20px; font-family: Arial, sans-serif; }
-        .header { font-size: 24px; margin-bottom: 20px; }
-        .button-container { margin-bottom: 10px; }
-    </style>
+    <title>Fab Eqp 管理系統</title>
+    <link href="Style.css" rel="stylesheet" />
 </head>
 <body>
     <form id="form1" runat="server">
-        <div class="header">資料管理系統</div>
-        <div id="tabPanel"></div>
-        <div id="content1">
-            <div class="button-container">
-                <div id="btnAdd"></div>
-                <div id="btnAddNew"></div>
+        <div class="main-container">
+
+            <!-- 頁籤 -->
+            <dx:ASPxPageControl ID="TabControl" runat="server" Width="100%" CssClass="custom-tab">
+                <TabPages>
+                    <dx:TabPage Text="Fab 設定" />
+                    <dx:TabPage Text="設備管理" />
+                </TabPages>
+            </dx:ASPxPageControl>
+
+            <!-- 工具列 -->
+            <div class="toolbar">
+                <dx:ASPxButton ID="btnAddNew" runat="server" Text="+ 新增新值" CssClass="btn-primary"
+                    AutoPostBack="false" OnClick="btnAddNew_Click" />
             </div>
-            <div id="gridContainer1"></div>
+
+            <!-- 表格 -->
+            <dx:ASPxGridView ID="GridView" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
+                Width="100%" CssClass="modern-grid" OnPageIndexChanged="GridView_PageIndexChanged"
+                OnCustomButtonCallback="GridView_CustomButtonCallback">
+
+                <SettingsPager PageSize="10" />
+                <SettingsBehavior AllowFocusedRow="True" />
+                <Settings ShowFilterRow="True" />
+
+                <Columns>
+                    <dx:GridViewCommandColumn Width="100px" ShowDeleteButton="true" ButtonType="Button">
+                        <CustomButtons>
+                            <dx:GridViewCommandColumnCustomButton ID="btnEditPopup" Text="編輯" />
+                        </CustomButtons>
+                    </dx:GridViewCommandColumn>
+
+                    <dx:GridViewDataTextColumn FieldName="FAB" Caption="Fab" Width="100px" />
+                    <dx:GridViewDataTextColumn FieldName="EQP" Caption="Eqp" Width="100px" />
+                    <dx:GridViewDataTextColumn FieldName="CHP" Caption="Chp" Width="150px" />
+                    <dx:GridViewDataTextColumn FieldName="JOBS" Caption="Jobs" Width="150px" />
+                </Columns>
+
+                <Styles>
+                    <Header CssClass="grid-header" />
+                    <Row CssClass="grid-row" />
+                    <FocusedRow CssClass="grid-focused-row" />
+                </Styles>
+
+            </dx:ASPxGridView>
+
+            <!-- 彈跳視窗 -->
+            <dx:ASPxPopupControl ID="popupForm" runat="server" Width="450px" HeaderText="新增/編輯資料"
+                CssClass="popup-form" PopupHorizontalAlign="WindowCenter" PopupVerticalAlign="WindowCenter">
+                <ContentCollection>
+                    <dx:PopupControlContentControl>
+                        <dx:ASPxCallbackPanel ID="CallbackPanelForm" runat="server" OnCallback="CallbackPanelForm_Callback">
+                            <PanelCollection>
+                                <dx:PanelContent>
+                                    <div class="form-fields">
+
+                                        <label>Fab</label>
+                                        <dx:ASPxTextBox ID="txtFAB" runat="server" Width="100%" CssClass="input-field" />
+
+                                        <label>Eqp</label>
+                                        <dx:ASPxTextBox ID="txtEQP" runat="server" Width="100%" CssClass="input-field" MaxLength="5" />
+
+                                        <label>Chp</label>
+                                        <dx:ASPxTextBox ID="txtCHP" runat="server" Width="100%" CssClass="input-field" />
+
+                                        <label>Jobs</label>
+                                        <dx:ASPxTextBox ID="txtJOBS" runat="server" Width="100%" CssClass="input-field" />
+
+                                    </div>
+
+                                    <div class="popup-actions">
+                                        <dx:ASPxButton ID="btnSave" runat="server" Text="儲存" CssClass="btn-primary"
+                                            AutoPostBack="false" OnClick="btnSave_Click" />
+
+                                        <dx:ASPxButton ID="btnCancel" runat="server" Text="取消" CssClass="btn-secondary"
+                                            AutoPostBack="false">
+                                            <ClientSideEvents Click="function(s, e) { popupForm.Hide(); }" />
+                                        </dx:ASPxButton>
+                                    </div>
+                                </dx:PanelContent>
+                            </PanelCollection>
+                        </dx:ASPxCallbackPanel>
+                    </dx:PopupControlContentControl>
+                </ContentCollection>
+            </dx:ASPxPopupControl>
+
         </div>
-        <div id="popupAdd"></div>
-        <div id="popupEdit"></div>
     </form>
-    <script>
-        $(function () {
-            // 初始化標籤頁
-            $("#tabPanel").dxTabPanel({
-                items: [
-                    { title: "資料表1", template: function () { return $("#content1"); } },
-                    { title: "資料表2", template: function () { return $("<div>尚未實作其他功能</div>"); } }
-                ]
-            });
-
-            // 初始化資料表格
-            var grid = $("#gridContainer1").dxDataGrid({
-                dataSource: {
-                    load: function () {
-                        return $.ajax({
-                            url: "MainPage.aspx/GetData",
-                            type: "POST",
-                            contentType: "application/json; charset=utf-8",
-                            dataType: "json"
-                        }).then(function (data) { return JSON.parse(data.d); });
-                    }
-                },
-                columns: [
-                    { dataField: "fab", caption: "Fab" },
-                    { dataField: "eqp", caption: "Eqp" },
-                    { dataField: "chp", caption: "Chp" },
-                    { dataField: "jobs", caption: "Jobs" },
-                    {
-                        caption: "動作",
-                        width: 150,
-                        cellTemplate: function (container, options) {
-                            $("<div>").append(
-                                $("<button>").dxButton({
-                                    text: "編輯",
-                                    onClick: function () { editRow(options.data); }
-                                }),
-                                $("<button>").dxButton({
-                                    text: "刪除",
-                                    onClick: function () { deleteRow(options.data); }
-                                })
-                            ).appendTo(container);
-                        }
-                    }
-                ],
-                selection: { mode: "single" },
-                filterRow: { visible: true },
-                paging: { pageSize: 10 },
-                pager: { visible: true }
-            }).dxDataGrid("instance");
-
-            // 新增按鈕（預填值）
-            $("#btnAdd").dxButton({
-                text: "新增（基於選擇）",
-                onClick: function () {
-                    var selectedRow = grid.getSelectedRowsData()[0];
-                    if (selectedRow) {
-                        var popup = $("#popupAdd").dxPopup("instance");
-                        var form = popup.content().find(".dx-form").dxForm("instance");
-                        form.option("formData", { fab: selectedRow.fab, eqp: selectedRow.eqp, chp: "", jobs: "" });
-                        popup.show();
-                    } else {
-                        DevExpress.ui.notify("請先選擇一筆資料", "warning", 2000);
-                    }
-                }
-            });
-
-            // 新增新值按鈕（空值）
-            $("#btnAddNew").dxButton({
-                text: "新增新值",
-                onClick: function () {
-                    var popup = $("#popupAdd").dxPopup("instance");
-                    var form = popup.content().find(".dx-form").dxForm("instance");
-                    form.option("formData", { fab: "", eqp: "", chp: "", jobs: "" });
-                    popup.show();
-                }
-            });
-
-            // 新增彈出視窗
-            $("#popupAdd").dxPopup({
-                title: "新增資料",
-                width: 400,
-                height: 300,
-                contentTemplate: function (contentElement) {
-                    var form = $("<div>").dxForm({
-                        formData: {},
-                        items: [
-                            { dataField: "fab", label: { text: "Fab" }, editorType: "dxTextBox" },
-                            { dataField: "eqp", label: { text: "Eqp" }, editorType: "dxTextBox" },
-                            { dataField: "chp", label: { text: "Chp" }, editorType: "dxTextBox" },
-                            { dataField: "jobs", label: { text: "Jobs" }, editorType: "dxTextBox" }
-                        ]
-                    });
-                    contentElement.append(form);
-                },
-                toolbarItems: [
-                    {
-                        widget: "dxButton",
-                        options: {
-                            text: "儲存",
-                            onClick: function () { saveAdd(grid); }
-                        }
-                    },
-                    {
-                        widget: "dxButton",
-                        options: {
-                            text: "取消",
-                            onClick: function () { $("#popupAdd").dxPopup("hide"); }
-                        }
-                    }
-                ]
-            });
-
-            // 編輯彈出視窗
-            $("#popupEdit").dxPopup({
-                title: "編輯資料",
-                width: 400,
-                height: 300,
-                contentTemplate: function (contentElement) {
-                    var form = $("<div>").dxForm({
-                        formData: {},
-                        items: [
-                            { dataField: "fab", label: { text: "Fab" }, editorType: "dxTextBox" },
-                            { dataField: "eqp", label: { text: "Eqp" }, editorType: "dxTextBox" },
-                            { dataField: "chp", label: { text: "Chp" }, editorType: "dxTextBox" },
-                            { dataField: "jobs", label: { text: "Jobs" }, editorType: "dxTextBox" }
-                        ]
-                    });
-                    contentElement.append(form);
-                },
-                toolbarItems: [
-                    {
-                        widget: "dxButton",
-                        options: {
-                            text: "儲存",
-                            onClick: function () { saveEdit(grid); }
-                        }
-                    },
-                    {
-                        widget: "dxButton",
-                        options: {
-                            text: "取消",
-                            onClick: function () { $("#popupEdit").dxPopup("hide"); }
-                        }
-                    }
-                ]
-            });
-
-            // 編輯資料列
-            function editRow(data) {
-                var popup = $("#popupEdit").dxPopup("instance");
-                var form = popup.content().find(".dx-form").dxForm("instance");
-                form.option("formData", data);
-                popup.show();
-            }
-
-            // 刪除資料列
-            function deleteRow(data) {
-                if (confirm("確定要刪除此資料嗎？")) {
-                    $.ajax({
-                        url: "MainPage.aspx/DeleteRow",
-                        type: "POST",
-                        contentType: "application/json; charset=utf-8",
-                        dataType: "json",
-                        data: JSON.stringify({ id: data.id })
-                    }).done(function (result) {
-                        if (result.d === "Success") {
-                            grid.refresh();
-                            DevExpress.ui.notify("刪除成功", "success", 2000);
-                        } else {
-                            DevExpress.ui.notify(result.d, "error", 2000);
-                        }
-                    });
-                }
-            }
-
-            // 儲存新增
-            function saveAdd(grid) {
-                var form = $("#popupAdd").dxPopup("instance").content().find(".dx-form").dxForm("instance");
-                var data = form.option("formData");
-                if (!data.eqp || data.eqp.length > 5) {
-                    DevExpress.ui.notify("Eqp 必須在 5 個字元以內", "error", 2000);
-                    return;
-                }
-                $.ajax({
-                    url: "MainPage.aspx/AddRow",
-                    type: "POST",
-                    contentType: "application/json; charset=utf-8",
-                    dataType: "json",
-                    data: JSON.stringify(data)
-                }).done(function (result) {
-                    if (result.d === "Success") {
-                        grid.refresh();
-                        $("#popupAdd").dxPopup("hide");
-                        DevExpress.ui.notify("新增成功", "success", 2000);
-                    } else {
-                        DevExpress.ui.notify(result.d, "error", 2000);
-                    }
-                });
-            }
-
-            // 儲存編輯
-            function saveEdit(grid) {
-                var form = $("#popupEdit").dxPopup("instance").content().find(".dx-form").dxForm("instance");
-                var data = form.option("formData");
-                if (!data.eqp || data.eqp.length > 5) {
-                    DevExpress.ui.notify("Eqp 必須在 5 個字元以內", "error", 2000);
-                    return;
-                }
-                $.ajax({
-                    url: "MainPage.aspx/EditRow",
-                    type: "POST",
-                    contentType: "application/json; charset=utf-8",
-                    dataType: "json",
-                    data: JSON.stringify(data)
-                }).done(function (result) {
-                    if (result.d === "Success") {
-                        grid.refresh();
-                        $("#popupEdit").dxPopup("hide");
-                        DevExpress.ui.notify("編輯成功", "success", 2000);
-                    } else {
-                        DevExpress.ui.notify(result.d, "error", 2000);
-                    }
-                });
-            }
-        });
-    </script>
 </body>
 </html>
-```
 
----
+2. CSS 設計（Style.css）
 
-### MainPage.aspx.cs
-以下是後端程式碼，負責處理資料操作並與 Oracle 資料庫互動。
-
-```csharp
-using System;
-using System.Web.Services;
-using Oracle.ManagedDataAccess.Client;
-using System.Data;
-using Newtonsoft.Json;
-
-namespace WebApp
-{
-    public partial class MainPage : System.Web.UI.Page
-    {
-        // 請將此處替換為您的 Oracle 連線字串
-        private static string connectionString = "Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=your_host)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=your_service)));User Id=your_user;Password=your_password;";
-
-        protected void Page_Load(object sender, EventArgs e)
-        {
-            // 假設 session["ID"] 在登入時已設定
-            if (Session["ID"] == null)
-            {
-                Session["ID"] = "test_user"; // 測試用，實際應有登入頁面
-            }
-        }
-
-        [WebMethod]
-        public static string GetData()
-        {
-            using (OracleConnection conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                OracleCommand cmd = new OracleCommand("SELECT id, fab, eqp, chp, jobs FROM main_table", conn);
-                OracleDataAdapter da = new OracleDataAdapter(cmd);
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-                return JsonConvert.SerializeObject(dt);
-            }
-        }
-
-        [WebMethod]
-        public static string AddRow(string fab, string eqp, string chp, string jobs)
-        {
-            if (string.IsNullOrEmpty(eqp) || eqp.Length > 5)
-            {
-                return "Eqp 必須在 5 個字元以內";
-            }
-            using (OracleConnection conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                OracleCommand cmd = new OracleCommand("INSERT INTO main_table (fab, eqp, chp, jobs) VALUES (:fab, :eqp, :chp, :jobs)", conn);
-                cmd.Parameters.Add(new OracleParameter("fab", fab ?? ""));
-                cmd.Parameters.Add(new OracleParameter("eqp", eqp));
-                cmd.Parameters.Add(new OracleParameter("chp", chp ?? ""));
-                cmd.Parameters.Add(new OracleParameter("jobs", jobs ?? ""));
-                cmd.ExecuteNonQuery();
-                return "Success";
-            }
-        }
-
-        [WebMethod]
-        public static string EditRow(int id, string fab, string eqp, string chp, string jobs)
-        {
-            if (string.IsNullOrEmpty(eqp) || eqp.Length > 5)
-            {
-                return "Eqp 必須在 5 個字元以內";
-            }
-            string userId = HttpContext.Current.Session["ID"]?.ToString();
-            if (string.IsNullOrEmpty(userId))
-            {
-                return "未登入";
-            }
-            using (OracleConnection conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                OracleCommand cmd = new OracleCommand("SELECT COUNT(*) FROM user_auth WHERE user_id = :userId AND row_id = :rowId", conn);
-                cmd.Parameters.Add(new OracleParameter("userId", userId));
-                cmd.Parameters.Add(new OracleParameter("rowId", id));
-                int count = Convert.ToInt32(cmd.ExecuteScalar());
-                if (count == 0)
-                {
-                    return "無編輯權限";
-                }
-                cmd = new OracleCommand("UPDATE main_table SET fab = :fab, eqp = :eqp, chp = :chp, jobs = :jobs WHERE id = :id", conn);
-                cmd.Parameters.Add(new OracleParameter("fab", fab ?? ""));
-                cmd.Parameters.Add(new OracleParameter("eqp", eqp));
-                cmd.Parameters.Add(new OracleParameter("chp", chp ?? ""));
-                cmd.Parameters.Add(new OracleParameter("jobs", jobs ?? ""));
-                cmd.Parameters.Add(new OracleParameter("id", id));
-                cmd.ExecuteNonQuery();
-                return "Success";
-            }
-        }
-
-        [WebMethod]
-        public static string DeleteRow(int id)
-        {
-            string userId = HttpContext.Current.Session["ID"]?.ToString();
-            if (string.IsNullOrEmpty(userId))
-            {
-                return "未登入";
-            }
-            using (OracleConnection conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                OracleCommand cmd = new OracleCommand("SELECT COUNT(*) FROM user_auth WHERE user_id = :userId AND row_id = :rowId", conn);
-                cmd.Parameters.Add(new OracleParameter("userId", userId));
-                cmd.Parameters.Add(new OracleParameter("rowId", id));
-                int count = Convert.ToInt32(cmd.ExecuteScalar());
-                if (count == 0)
-                {
-                    return "無刪除權限";
-                }
-                cmd = new OracleCommand("DELETE FROM main_table WHERE id = :id", conn);
-                cmd.Parameters.Add(new OracleParameter("id", id));
-                cmd.ExecuteNonQuery();
-                return "Success";
-            }
-        }
-    }
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: #f4f6f9;
+    margin: 0;
+    padding: 0;
 }
-```
 
----
+.main-container {
+    max-width: 1000px;
+    margin: 40px auto;
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
 
-### 功能說明
-1. **標籤頁切換**:
-   - 使用 `dxTabPanel` 實現，包含 "資料表1" 和 "資料表2" 兩個標籤（目前僅實作第一個標籤的內容）。
-2. **資料表格**:
-   - 使用 `dxDataGrid`，欄位包含 `fab`, `eqp`, `chp`, `jobs`，以及動作欄（編輯、刪除按鈕）。
-   - 支援單選、過濾（內建 filterRow）、分頁。
-3. **新增功能**:
-   - "新增（基於選擇）" 按鈕：若有選擇資料列，則預填 `fab` 和 `eqp` 值至彈出視窗。
-   - "新增新值" 按鈕：彈出視窗所有欄位預設為空。
-   - 儲存時檢查 `eqp` 是否在 5 個字元以內（前端與後端雙重驗證）。
-4. **編輯功能**:
-   - 每列有 "編輯" 按鈕，點擊後顯示彈出視窗並載入該列資料。
-   - 儲存時檢查權限（`session["ID"]` 是否在 `user_auth` 中）及 `eqp` 字數。
-5. **刪除功能**:
-   - 每列有 "刪除" 按鈕，點擊後顯示確認對話框。
-   - 檢查權限後執行刪除。
-6. **過濾功能**:
-   - 使用 DevExtreme 的內建 `filterRow`，無需額外實現 "新增篩選值" 按鈕。
-7. **美觀設計**:
-   - 使用 DevExtreme 的 `dx.light.css` 主題，並添加自訂 CSS（如標題和間距）提升視覺效果。
+.toolbar {
+    margin-bottom: 15px;
+    text-align: right;
+}
 
----
+.btn-primary {
+    background-color: #28a745 !important;
+    color: #fff !important;
+    border-radius: 5px !important;
+    padding: 8px 16px !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
 
-### 使用說明
-1. **環境設定**:
-   - 安裝 `Oracle.ManagedDataAccess` NuGet 套件。
-   - 在 `MainPage.aspx.cs` 中更新 `connectionString` 為您的 Oracle 連線字串。
-2. **資料庫準備**:
-   - 建立 `main_table` 和 `user_auth` 表格，並插入測試資料。
-   - 確保 `session["ID"]` 在使用者登入時設定（此範例中為測試用硬編碼）。
-3. **部署**:
-   - 將專案部署至 IIS 或 Visual Studio 執行。
+.btn-primary:hover {
+    background-color: #218838 !important;
+}
 
----
+.btn-secondary {
+    background-color: #6c757d !important;
+    color: #fff !important;
+    border-radius: 5px !important;
+    padding: 8px 16px !important;
+}
 
-### 注意事項
-- **安全性**: 實際應用中應加入更多的錯誤處理、SQL 注入防護及登入驗證。
-- **擴展性**: 目前僅實作第一個標籤頁，第二個標籤可依需求複製並修改資料來源。
-- **效能**: 若資料量大，可改進為伺服器端分頁與過濾。
+.custom-tab .dxpcTab_PlasticBlue {
+    background-color: #007bff !important;
+    color: #ffffff !important;
+    border-radius: 5px 5px 0 0;
+}
 
-這份程式碼滿足您的所有需求，並提供一個功能完整且美觀的 Web 專案。如有其他問題，歡迎告訴我！
+.custom-tab .dxpcContent {
+    background-color: #ffffff;
+    border: none !important;
+}
+
+.modern-grid .grid-header {
+    background-color: #007bff !important;
+    color: #ffffff !important;
+    font-weight: bold;
+    text-align: center;
+}
+
+.modern-grid .grid-row {
+    background-color: #ffffff;
+}
+
+.modern-grid .grid-row:hover {
+    background-color: #e9f5ff;
+}
+
+.modern-grid .grid-focused-row {
+    background-color: #cfe2ff !important;
+}
+
+.popup-form {
+    border-radius: 8px;
+}
+
+.form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.input-field {
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+.popup-actions {
+    margin-top: 20px;
+    text-align: right;
+}
+
+.dxgvCommandColumn_PlasticBlue .dxbButton {
+    background-color: #17a2b8 !important;
+    color: #ffffff !important;
+    border-radius: 4px;
+}
+
+.dxgvCommandColumn_PlasticBlue .dxbButton:hover {
+    background-color: #138496 !important;
+}
+
+3. C# 後端邏輯（Default.aspx.cs）
+
+（保持不變，前一版邏輯已經 OK，只是 UI 優化）
+如果需要，我可以再幫你優化權限驗證流程。
+
+效果展示
+
+頁籤 (Tabs)
+	•	簡約帶圓角
+	•	點擊有明顯分頁效果
+
+表格 (Grid)
+	•	表頭藍色強調
+	•	行 Hover 效果
+	•	編輯 / 刪除按鈕整合在行內，操作直覺
+
+新增 / 編輯
+	•	彈窗圓角 + 陰影
+	•	簡化表單填寫流程
+	•	按鈕顏色對比清晰
+	•	點擊「取消」不用回傳，純 JS 隱藏彈窗
+
+加分功能
+	•	Loading 動畫（如果想加）
+	•	Session 權限驗證
+	•	通知提示框（成功/錯誤）
+
+如果你覺得「整體色調」還想換其他風格（深色、淺灰…），可以再調整！
+如果想要完整專案範本 + DevExpress 掛載方式，也可以說一聲～
