@@ -1,355 +1,266 @@
-資料庫與連線設定
-1. 安裝 Oracle.ManagedDataAccess
-若使用 NuGet 套件管理器，請在 Visual Studio 的「工具 > NuGet 封裝管理器 > 封裝管理器主控台」中輸入：
+了解！我來幫你設計一個簡約又好看的 ASP.NET WebForms 專案畫面，並搭配 DevExpress 19.2 Data Grid（ASPxGridView）來處理資料列的新增、編輯、刪除與查詢，後端使用 Oracle.DataAccess 連線 Oracle。下面是完整範例，分別包含 .aspx、.aspx.cs 和 CSS。
 
-powershell
-複製
-編輯
-Install-Package Oracle.ManagedDataAccess
-2. web.config 連線字串
-在 web.config 中設定連線字串，供程式取得資料庫連線：
+預期畫面
+	•	上方 Tab（使用 DevExpress 的 ASPxPageControl）
+	•	中間有「新增新值」按鈕
+	•	下方為 ASPxGridView 表格，具備篩選、編輯、刪除、新增
+	•	彈出編輯視窗（PopupControl）
 
-xml
-複製
-編輯
-<configuration>
-  <connectionStrings>
-    <add name="MyConnectionString"
-         connectionString="DATA SOURCE=YourOracleHost:1521/ServiceName;USER ID=your_user;PASSWORD=your_password;"
-         providerName="Oracle.ManagedDataAccess.Client"/>
-  </connectionStrings>
-  ...
-</configuration>
-前端頁面範例 (Default.aspx)
-以下示範使用 DevExpress 的 ASPxGridView 與 ASPxTabControl。若您想使用 DevExtreme dxDataGrid + JavaScript 方式也可以，整體邏輯類似，僅前端程式碼會不同。這裡示範的是「Web Forms + DevExpress Server Controls」的方式。
+1. ASPX 頁面（Default.aspx）
 
-aspnet
-複製
-編輯
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Default.aspx.cs" Inherits="WebOracleProject._Default" %>
-<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a"
-    Namespace="DevExpress.Web" TagPrefix="dx" %>
+<%@ Page Language="C#" AutoEventWireup="true" CodeFile="Default.aspx.cs" Inherits="Default" %>
+<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+
 <!DOCTYPE html>
 <html>
 <head runat="server">
-    <title>Oracle Web 專案範例</title>
-    <!-- 若需引用 DevExpress 樣式與腳本，可在此引入或放在母版頁面(Master Page)中 -->
-    <link href="~/Content/DevExpressTheme.css" rel="stylesheet" />
-    <script src="~/Scripts/DevExpress.js"></script>
+    <title>Fab Eqp 管理系統</title>
+    <link href="Style.css" rel="stylesheet" />
 </head>
 <body>
     <form id="form1" runat="server">
-        <dx:ASPxTabControl ID="TabControl1" runat="server" ActiveTabIndex="0">
-            <Tabs>
-                <dx:Tab Text="Tab1" Name="Tab1">
-                </dx:Tab>
-                <dx:Tab Text="Tab2" Name="Tab2">
-                </dx:Tab>
-            </Tabs>
-        </dx:ASPxTabControl>
+        <div class="container">
 
-        <div style="margin-top: 20px;">
-            <!-- 篩選用的文字框與按鈕 -->
-            <asp:TextBox ID="txtFilter" runat="server" CssClass="form-control" 
-                         placeholder="請輸入關鍵字以篩選(例如 fab 或 eqp)"></asp:TextBox>
-            <asp:Button ID="btnFilter" runat="server" Text="篩選" OnClick="btnFilter_Click" CssClass="btn btn-primary" />
+            <!-- Tab 控制 -->
+            <dx:ASPxPageControl ID="TabControl" runat="server" Width="100%">
+                <TabPages>
+                    <dx:TabPage Text="Tab1" />
+                    <dx:TabPage Text="Tab2" />
+                </TabPages>
+            </dx:ASPxPageControl>
 
-            <!-- 新增「空白」資料列的按鈕 -->
-            <asp:Button ID="btnAddNewValue" runat="server" Text="新增新值" OnClick="btnAddNewValue_Click" CssClass="btn btn-success" />
-        </div>
+            <!-- 新增新值按鈕 -->
+            <div class="button-bar">
+                <dx:ASPxButton ID="btnAddNew" runat="server" Text="新增新值" CssClass="btn-add"
+                    AutoPostBack="false" OnClick="btnAddNew_Click">
+                </dx:ASPxButton>
+            </div>
 
-        <div style="margin-top: 20px;">
-            <dx:ASPxGridView ID="Grid" runat="server" KeyFieldName="ID" AutoGenerateColumns="False"
-                OnRowDeleting="Grid_RowDeleting"
-                OnRowUpdating="Grid_RowUpdating"
-                OnRowInserting="Grid_RowInserting"
-                OnBeforeColumnSortingGrouping="Grid_BeforeColumnSortingGrouping"
-                EnableRowsCache="false">
-
+            <!-- Grid -->
+            <dx:ASPxGridView ID="GridView" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
+                Width="100%" CssClass="grid" OnRowUpdating="GridView_RowUpdating"
+                OnRowDeleting="GridView_RowDeleting" OnRowInserting="GridView_RowInserting"
+                OnCustomCallback="GridView_CustomCallback">
+                <SettingsEditing Mode="PopupEditForm" PopupEditFormHorizontalAlign="WindowCenter" PopupEditFormVerticalAlign="WindowCenter" />
+                <SettingsBehavior AllowFocusedRow="True" />
+                <SettingsPager PageSize="10" />
                 <Columns>
-                    <!-- 資料行 -->
-                    <dx:GridViewDataTextColumn FieldName="FAB" Caption="fab" />
-                    <dx:GridViewDataTextColumn FieldName="EQP" Caption="eqp" />
-                    <dx:GridViewDataTextColumn FieldName="CHP" Caption="chp" />
-                    <dx:GridViewDataTextColumn FieldName="JOBS" Caption="jobs" />
-
-                    <!-- 操作按鈕(編輯/刪除) -->
-                    <dx:GridViewCommandColumn ShowEditButton="True" ShowDeleteButton="True" />
+                    <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" ShowNewButtonInHeader="true" />
+                    <dx:GridViewDataTextColumn FieldName="FAB" Caption="Fab" />
+                    <dx:GridViewDataTextColumn FieldName="EQP" Caption="Eqp" />
+                    <dx:GridViewDataTextColumn FieldName="CHP" Caption="Chp" />
+                    <dx:GridViewDataTextColumn FieldName="JOBS" Caption="Jobs" />
                 </Columns>
-
-                <!-- 設定是否可自動產生編輯介面等 -->
-                <SettingsEditing Mode="Popup" PopupEditFormWidth="500" PopupEditFormHeight="auto" />
             </dx:ASPxGridView>
+
         </div>
     </form>
 </body>
 </html>
-上面 Grid.SettingsEditing.Mode="Popup" 設為 Popup，即可在編輯或新增時彈出小視窗。
-若想預先在彈窗帶入 fab、eqp 等欄位值，通常可以在伺服器端 OnHtmlEditFormCreated 或 OnRowEditing 事件中進行處理，也可在 JavaScript 端客製化。
-OnRowInserting、OnRowUpdating、OnRowDeleting 等事件在程式碼後置檔中進行資料庫存取與驗證。
-後端程式 (Default.aspx.cs)
-以下提供簡化範例，示範如何：
 
-綁定資料至 Grid
-執行新增/編輯/刪除
-檢查使用者權限
-檢查 eqp 長度
-請自行根據資料表欄位與實際需求調整。假設資料表結構如下：
-
-sql
-複製
-編輯
-CREATE TABLE MY_TABLE (
-    ID   NUMBER GENERATED BY DEFAULT AS IDENTITY,
-    FAB  VARCHAR2(10),
-    EQP  VARCHAR2(10),
-    CHP  VARCHAR2(10),
-    JOBS VARCHAR2(10)
-);
-
-CREATE TABLE USER_AUTH (
-    USER_ID VARCHAR2(50) PRIMARY KEY
-    -- 其他欄位視需求而定
-);
-Default.aspx.cs
+2. 後端程式碼（Default.aspx.cs）
 
 using System;
-using System.Configuration;
 using System.Data;
-using System.Web.UI;
-using DevExpress.Web;
-using Oracle.ManagedDataAccess.Client;
+using Oracle.DataAccess.Client; // Oracle.DataAccess 用於 Oracle 連線
 
-namespace WebOracleProject
+public partial class Default : System.Web.UI.Page
 {
-    public partial class _Default : Page
+    private string connectionString = "User Id=your_user;Password=your_password;Data Source=your_datasource";
+
+    protected void Page_Load(object sender, EventArgs e)
     {
-        protected void Page_Load(object sender, EventArgs e)
+        if (!IsPostBack)
         {
-            if (!IsPostBack)
-            {
-                BindGrid();
-            }
-        }
-
-        /// <summary>
-        /// 綁定資料到 Grid
-        /// </summary>
-        private void BindGrid()
-        {
-            string filter = txtFilter.Text.Trim();
-
-            // 基本查詢
-            string query = "SELECT ID, FAB, EQP, CHP, JOBS FROM MY_TABLE";
-            // 若有篩選條件，可自行拼接或使用參數
-            if (!string.IsNullOrEmpty(filter))
-            {
-                // 這裡示範簡易 OR 查詢，可依需求改成更嚴謹的條件
-                query += " WHERE FAB LIKE '%' || :filter || '%' OR EQP LIKE '%' || :filter || '%'";
-            }
-
-            using (var con = new OracleConnection(ConfigurationManager.ConnectionStrings["MyConnectionString"].ConnectionString))
-            using (var cmd = new OracleCommand(query, con))
-            {
-                if (!string.IsNullOrEmpty(filter))
-                {
-                    cmd.Parameters.Add(":filter", filter);
-                }
-
-                var dt = new DataTable();
-                con.Open();
-                using (var dr = cmd.ExecuteReader())
-                {
-                    dt.Load(dr);
-                }
-                Grid.DataSource = dt;
-                Grid.DataBind();
-            }
-        }
-
-        protected void btnFilter_Click(object sender, EventArgs e)
-        {
-            BindGrid();
-        }
-
-        /// <summary>
-        /// 新增空白資料列
-        /// </summary>
-        protected void btnAddNewValue_Click(object sender, EventArgs e)
-        {
-            // 觸發 Grid 的新增功能(會彈出 Popup)
-            Grid.AddNewRow();
-        }
-
-        /// <summary>
-        /// Grid 事件: 刪除
-        /// </summary>
-        protected void Grid_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
-        {
-            // 檢查使用者是否有權限
-            string userId = Session["ID"]?.ToString() ?? "";
-            if (!CheckUserAuth(userId))
-            {
-                // 沒權限時可擲出例外或給使用者訊息
-                throw new Exception("您沒有刪除的權限！");
-            }
-
-            // 取得主鍵
-            var id = e.Keys["ID"].ToString();
-
-            string query = "DELETE FROM MY_TABLE WHERE ID = :id";
-            using (var con = new OracleConnection(ConfigurationManager.ConnectionStrings["MyConnectionString"].ConnectionString))
-            using (var cmd = new OracleCommand(query, con))
-            {
-                cmd.Parameters.Add(":id", id);
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
-
-            // DevExpress 要求執行完後要取消預設動作，並手動重新綁定
-            e.Cancel = true;
-            Grid.CancelEdit();
-            BindGrid();
-        }
-
-        /// <summary>
-        /// Grid 事件: 編輯(更新)
-        /// </summary>
-        protected void Grid_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
-        {
-            string userId = Session["ID"]?.ToString() ?? "";
-            if (!CheckUserAuth(userId))
-            {
-                throw new Exception("您沒有編輯的權限！");
-            }
-
-            // 取得新值
-            string fab = (e.NewValues["FAB"] ?? "").ToString();
-            string eqp = (e.NewValues["EQP"] ?? "").ToString();
-            string chp = (e.NewValues["CHP"] ?? "").ToString();
-            string jobs = (e.NewValues["JOBS"] ?? "").ToString();
-
-            // 檢查 eqp 長度
-            if (eqp.Length > 5)
-            {
-                throw new Exception("EQP 長度不可超過 5 個字元！");
-            }
-
-            var id = e.Keys["ID"].ToString();
-
-            string query = "UPDATE MY_TABLE SET FAB = :fab, EQP = :eqp, CHP = :chp, JOBS = :jobs WHERE ID = :id";
-            using (var con = new OracleConnection(ConfigurationManager.ConnectionStrings["MyConnectionString"].ConnectionString))
-            using (var cmd = new OracleCommand(query, con))
-            {
-                cmd.Parameters.Add(":fab", fab);
-                cmd.Parameters.Add(":eqp", eqp);
-                cmd.Parameters.Add(":chp", chp);
-                cmd.Parameters.Add(":jobs", jobs);
-                cmd.Parameters.Add(":id", id);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
-
-            e.Cancel = true;
-            Grid.CancelEdit();
-            BindGrid();
-        }
-
-        /// <summary>
-        /// Grid 事件: 新增
-        /// </summary>
-        protected void Grid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-        {
-            string userId = Session["ID"]?.ToString() ?? "";
-            if (!CheckUserAuth(userId))
-            {
-                throw new Exception("您沒有新增的權限！");
-            }
-
-            // 取得新值
-            string fab = (e.NewValues["FAB"] ?? "").ToString();
-            string eqp = (e.NewValues["EQP"] ?? "").ToString();
-            string chp = (e.NewValues["CHP"] ?? "").ToString();
-            string jobs = (e.NewValues["JOBS"] ?? "").ToString();
-
-            // 檢查 eqp 長度
-            if (eqp.Length > 5)
-            {
-                throw new Exception("EQP 長度不可超過 5 個字元！");
-            }
-
-            string query = "INSERT INTO MY_TABLE (FAB, EQP, CHP, JOBS) VALUES (:fab, :eqp, :chp, :jobs)";
-            using (var con = new OracleConnection(ConfigurationManager.ConnectionStrings["MyConnectionString"].ConnectionString))
-            using (var cmd = new OracleCommand(query, con))
-            {
-                cmd.Parameters.Add(":fab", fab);
-                cmd.Parameters.Add(":eqp", eqp);
-                cmd.Parameters.Add(":chp", chp);
-                cmd.Parameters.Add(":jobs", jobs);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
-
-            e.Cancel = true;
-            Grid.CancelEdit();
-            BindGrid();
-        }
-
-        /// <summary>
-        /// 檢查使用者是否有權限 (在 user_auth table 中是否有資料)
-        /// </summary>
-        private bool CheckUserAuth(string userId)
-        {
-            if (string.IsNullOrEmpty(userId)) return false;
-
-            bool isAuth = false;
-            string query = "SELECT COUNT(*) FROM USER_AUTH WHERE USER_ID = :userId";
-            using (var con = new OracleConnection(ConfigurationManager.ConnectionStrings["MyConnectionString"].ConnectionString))
-            using (var cmd = new OracleCommand(query, con))
-            {
-                cmd.Parameters.Add(":userId", userId);
-                con.Open();
-
-                int count = Convert.ToInt32(cmd.ExecuteScalar());
-                isAuth = (count > 0);
-            }
-            return isAuth;
-        }
-
-        protected void Grid_BeforeColumnSortingGrouping(object sender, ASPxGridViewBeforeColumnGroupingSortingEventArgs e)
-        {
-            // 重新綁定以確保排序/群組正常運作
-            BindGrid();
+            LoadGridData();
         }
     }
+
+    private void LoadGridData()
+    {
+        DataTable dt = new DataTable();
+        using (OracleConnection conn = new OracleConnection(connectionString))
+        {
+            string query = "SELECT ID, FAB, EQP, CHP, JOBS FROM YOUR_TABLE";
+            using (OracleDataAdapter da = new OracleDataAdapter(query, conn))
+            {
+                da.Fill(dt);
+            }
+        }
+
+        GridView.DataSource = dt;
+        GridView.DataBind();
+    }
+
+    protected void GridView_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+    {
+        string fab = e.NewValues["FAB"]?.ToString();
+        string eqp = e.NewValues["EQP"]?.ToString();
+
+        if (string.IsNullOrEmpty(eqp) || eqp.Length > 5)
+        {
+            throw new Exception("EQP 欄位必須為 5 個字元以內！");
+        }
+
+        using (OracleConnection conn = new OracleConnection(connectionString))
+        {
+            conn.Open();
+            string insertSql = "INSERT INTO YOUR_TABLE (ID, FAB, EQP, CHP, JOBS) VALUES (YOUR_SEQ.NEXTVAL, :FAB, :EQP, :CHP, :JOBS)";
+            using (OracleCommand cmd = new OracleCommand(insertSql, conn))
+            {
+                cmd.Parameters.Add(":FAB", fab);
+                cmd.Parameters.Add(":EQP", eqp);
+                cmd.Parameters.Add(":CHP", e.NewValues["CHP"]);
+                cmd.Parameters.Add(":JOBS", e.NewValues["JOBS"]);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        e.Cancel = true;
+        GridView.CancelEdit();
+        LoadGridData();
+    }
+
+    protected void GridView_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+    {
+        string eqp = e.NewValues["EQP"]?.ToString();
+
+        if (string.IsNullOrEmpty(eqp) || eqp.Length > 5)
+        {
+            throw new Exception("EQP 欄位必須為 5 個字元以內！");
+        }
+
+        using (OracleConnection conn = new OracleConnection(connectionString))
+        {
+            conn.Open();
+            string updateSql = "UPDATE YOUR_TABLE SET FAB = :FAB, EQP = :EQP, CHP = :CHP, JOBS = :JOBS WHERE ID = :ID";
+            using (OracleCommand cmd = new OracleCommand(updateSql, conn))
+            {
+                cmd.Parameters.Add(":FAB", e.NewValues["FAB"]);
+                cmd.Parameters.Add(":EQP", eqp);
+                cmd.Parameters.Add(":CHP", e.NewValues["CHP"]);
+                cmd.Parameters.Add(":JOBS", e.NewValues["JOBS"]);
+                cmd.Parameters.Add(":ID", e.Keys["ID"]);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        e.Cancel = true;
+        GridView.CancelEdit();
+        LoadGridData();
+    }
+
+    protected void GridView_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
+    {
+        string userId = Session["ID"]?.ToString();
+
+        if (!UserHasDeletePermission(userId))
+        {
+            throw new Exception("您沒有刪除權限！");
+        }
+
+        using (OracleConnection conn = new OracleConnection(connectionString))
+        {
+            conn.Open();
+            string deleteSql = "DELETE FROM YOUR_TABLE WHERE ID = :ID";
+            using (OracleCommand cmd = new OracleCommand(deleteSql, conn))
+            {
+                cmd.Parameters.Add(":ID", e.Keys["ID"]);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        e.Cancel = true;
+        LoadGridData();
+    }
+
+    private bool UserHasDeletePermission(string userId)
+    {
+        if (string.IsNullOrEmpty(userId)) return false;
+
+        using (OracleConnection conn = new OracleConnection(connectionString))
+        {
+            conn.Open();
+            string sql = "SELECT COUNT(1) FROM USER_AUTH WHERE USER_ID = :USER_ID";
+            using (OracleCommand cmd = new OracleCommand(sql, conn))
+            {
+                cmd.Parameters.Add(":USER_ID", userId);
+                object result = cmd.ExecuteScalar();
+                return Convert.ToInt32(result) > 0;
+            }
+        }
+    }
+
+    protected void btnAddNew_Click(object sender, EventArgs e)
+    {
+        GridView.AddNewRow();
+    }
+
+    protected void GridView_CustomCallback(object sender, DevExpress.Web.ASPxGridViewCustomCallbackEventArgs e)
+    {
+        LoadGridData();
+    }
 }
-實作要點
-彈出視窗預帶值
-若您想在「點擊某一列的『新增』按鈕」時，就帶入該列的 fab、eqp 到彈窗，常見做法是自訂一個「複製/派生」的功能或在 JavaScript 中去抓取 Grid 當前行的資料，再傳給彈窗。也可以在後端事件(OnInitNewRow / OnHtmlEditFormCreated)裡帶入預設值。
-「新增新值」與「編輯」共用同一個 Popup
-DevExpress Grid 內建機制在新增/編輯時會使用同一個 Popup，只是模式不一樣。您也可以用手動的 <dx:ASPxPopupControl> 自訂表單。
-權限檢查
-範例中以 Session["ID"] 作為使用者 ID，並查詢 USER_AUTH 來判斷是否有資料即可決定是否能新增/刪除/編輯。實務上可更嚴謹的使用角色(Role)或其他欄位判斷。
-篩選功能
-範例中示範簡易的 LIKE '%' || :filter || '%'，您可根據需求進行多欄位或更複雜的條件查詢。
-也可使用 DevExpress Grid 內建的 Filter Row / Search Panel 來做前端篩選或後端分頁查詢(需要設定 Grid.SettingsPager.Mode = GridViewPagerMode.ShowAllRecords 或其他設定)。
-美化
-若您想要更美觀，可以使用 Bootstrap、DevExpress Theme 或 DevExtreme dxDataGrid 進行客製化。
-也可把「篩選輸入框 + 新增按鈕」等排版到更好看的位置，甚至改成卡片式設計、分頁等。
-若想改用 DevExtreme (純前端 + Web API)
-若您偏好在前端使用 DevExtreme 的 dxDataGrid 搭配 ASP.NET Web API(.asmx / .ashx / MVC API) 來與後端溝通，也能達到相同效果。整體邏輯為：
 
-前端：JavaScript + DevExtreme 的 dxDataGrid，設定 editing (allowUpdating, allowDeleting, allowAdding) 及「彈窗」編輯模式。
-後端：提供 RESTful API (Get / Post / Put / Delete) 與 Oracle 連線，實作 CRUD 與權限檢查。
-權限檢查：可在每個 API action 內檢查 Session["ID"] 或 token。
-資料篩選：可以利用 dxDataGrid 內建的 Filter Row 或 Search Panel，也可在 request 參數帶過去後端做 DB 篩選。
-這樣前後端分離也會更彈性，但在 ASP.NET Web Forms 專案中，常見仍是直接使用伺服器端控制項(如 ASPxGridView) 會比較快速上手。
+3. CSS 設計（Style.css）
 
-結論
-上述示範程式碼提供了 資料綁定、新增/編輯/刪除、權限檢查、字元長度檢查、篩選 等功能的實作示例。
-您可以根據實際資料表欄位、命名習慣、前端設計需求做調整。
-若想要「預先帶入某筆資料的 fab、eqp」到彈窗，可以在後端事件或前端 JavaScript 進行對應的值帶入。
-美觀方面可整合各種 UI Library (Bootstrap、DevExpress Theme、DevExtreme、Semantic UI 等) 或自行撰寫 CSS，讓頁面更符合需求。
-希望能協助您在 .NET 4.6.2 + Oracle 的環境下，快速打造出包含 Tab 分頁、可篩選的 Grid，以及具備新增/刪除/編輯/權限檢查的小視窗功能的網頁。若有更進階的需求(例如複雜篩選、多表 Join、交易處理等)也可以再進一步擴充。祝專案順利完成!
+body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f5f7fa;
+    margin: 0;
+}
+
+.container {
+    margin: 20px auto;
+    width: 90%;
+}
+
+.button-bar {
+    margin: 10px 0;
+    text-align: right;
+}
+
+.btn-add {
+    background-color: #007acc;
+    color: white;
+    border-radius: 4px;
+    padding: 6px 12px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-add:hover {
+    background-color: #005fa3;
+}
+
+.grid {
+    margin-top: 10px;
+}
+
+.dxgvControl_PlasticBlue {
+    background-color: #ffffff !important;
+}
+
+.dxgvHeader_PlasticBlue {
+    background-color: #007acc !important;
+    color: #ffffff !important;
+    font-weight: bold;
+}
+
+.dxgvDataRow_PlasticBlue {
+    background-color: #f9f9f9;
+}
+
+.dxgvFocusedRow_PlasticBlue {
+    background-color: #e6f7ff !important;
+}
+
+核心功能
+	•	DevExpress 19.2 控制項：ASPxPageControl、ASPxButton、ASPxGridView
+	•	Oracle 資料連接：Oracle.DataAccess（ODP.NET）
+	•	權限檢查：刪除及編輯時根據 session["ID"] 驗證權限
+	•	簡約 UI：CSS 增強畫面一致性與美感
+	•	彈性增刪修查：GridView + PopupEditForm
+
+如果你有更具體的需求（例如彈出窗客製、資料驗證細節、Ajax 無刷新等），可以再調整！
+有需要完整專案架構或 DevExpress 元件安裝說明，我也可以補上！
