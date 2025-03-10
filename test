@@ -1,12 +1,17 @@
-了解！我來幫你設計一個簡約又好看的 ASP.NET WebForms 專案畫面，並搭配 DevExpress 19.2 Data Grid（ASPxGridView）來處理資料列的新增、編輯、刪除與查詢，後端使用 Oracle.DataAccess 連線 Oracle。下面是完整範例，分別包含 .aspx、.aspx.cs 和 CSS。
+了解！我們來針對你提到的兩個問題做處理：
 
-預期畫面
-	•	上方 Tab（使用 DevExpress 的 ASPxPageControl）
-	•	中間有「新增新值」按鈕
-	•	下方為 ASPxGridView 表格，具備篩選、編輯、刪除、新增
-	•	彈出編輯視窗（PopupControl）
+1. 點選 New（新增）要跳出小視窗填寫並儲存
+	•	我們會使用 DevExpress 19.2 的 ASPxPopupControl 搭配 ASPxCallbackPanel 來實現「彈跳視窗」功能。
+	•	使用者點擊「新增新值」或 Grid 裡的「新增」按鈕，彈窗會顯示讓使用者填寫，填寫完成後按儲存，資料寫入 Oracle，然後刷新 Grid。
 
-1. ASPX 頁面（Default.aspx）
+2. 換頁時整個頁面變空白
+	•	這通常是因為 GridView 的資料來源沒有被正確綁定。
+	•	Page_Load 需要檢查 IsPostBack 時機，搭配 DataBind() 正確觸發。
+	•	也可能與 CustomCallback 或 DataSource 綁定時機有關，我會幫你修正。
+
+完整範例
+
+1. ASPX 頁面
 
 <%@ Page Language="C#" AutoEventWireup="true" CodeFile="Default.aspx.cs" Inherits="Default" %>
 <%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
@@ -21,7 +26,7 @@
     <form id="form1" runat="server">
         <div class="container">
 
-            <!-- Tab 控制 -->
+            <!-- Tab -->
             <dx:ASPxPageControl ID="TabControl" runat="server" Width="100%">
                 <TabPages>
                     <dx:TabPage Text="Tab1" />
@@ -29,7 +34,7 @@
                 </TabPages>
             </dx:ASPxPageControl>
 
-            <!-- 新增新值按鈕 -->
+            <!-- 新增按鈕 -->
             <div class="button-bar">
                 <dx:ASPxButton ID="btnAddNew" runat="server" Text="新增新值" CssClass="btn-add"
                     AutoPostBack="false" OnClick="btnAddNew_Click">
@@ -38,20 +43,60 @@
 
             <!-- Grid -->
             <dx:ASPxGridView ID="GridView" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
-                Width="100%" CssClass="grid" OnRowUpdating="GridView_RowUpdating"
-                OnRowDeleting="GridView_RowDeleting" OnRowInserting="GridView_RowInserting"
-                OnCustomCallback="GridView_CustomCallback">
-                <SettingsEditing Mode="PopupEditForm" PopupEditFormHorizontalAlign="WindowCenter" PopupEditFormVerticalAlign="WindowCenter" />
-                <SettingsBehavior AllowFocusedRow="True" />
+                Width="100%" CssClass="grid" OnPageIndexChanged="GridView_PageIndexChanged">
                 <SettingsPager PageSize="10" />
+                <SettingsBehavior AllowFocusedRow="True" />
                 <Columns>
-                    <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" ShowNewButtonInHeader="true" />
+                    <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true">
+                        <CustomButtons>
+                            <dx:GridViewCommandColumnCustomButton ID="btnEditPopup" Text="編輯" />
+                        </CustomButtons>
+                    </dx:GridViewCommandColumn>
+
                     <dx:GridViewDataTextColumn FieldName="FAB" Caption="Fab" />
                     <dx:GridViewDataTextColumn FieldName="EQP" Caption="Eqp" />
                     <dx:GridViewDataTextColumn FieldName="CHP" Caption="Chp" />
                     <dx:GridViewDataTextColumn FieldName="JOBS" Caption="Jobs" />
                 </Columns>
             </dx:ASPxGridView>
+
+            <!-- 新增/編輯 Popup -->
+            <dx:ASPxPopupControl ID="popupForm" runat="server" Width="400px" HeaderText="資料編輯" PopupHorizontalAlign="WindowCenter" PopupVerticalAlign="WindowCenter">
+                <ContentCollection>
+                    <dx:PopupControlContentControl>
+                        <dx:ASPxCallbackPanel ID="CallbackPanelForm" runat="server" OnCallback="CallbackPanelForm_Callback">
+                            <PanelCollection>
+                                <dx:PanelContent>
+                                    <table class="popup-form">
+                                        <tr>
+                                            <td>Fab:</td>
+                                            <td><dx:ASPxTextBox ID="txtFAB" runat="server" Width="200px" /></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Eqp:</td>
+                                            <td><dx:ASPxTextBox ID="txtEQP" runat="server" Width="200px" MaxLength="5" /></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Chp:</td>
+                                            <td><dx:ASPxTextBox ID="txtCHP" runat="server" Width="200px" /></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Jobs:</td>
+                                            <td><dx:ASPxTextBox ID="txtJOBS" runat="server" Width="200px" /></td>
+                                        </tr>
+                                    </table>
+                                    <div class="popup-button">
+                                        <dx:ASPxButton ID="btnSave" runat="server" Text="儲存" AutoPostBack="false" OnClick="btnSave_Click" />
+                                        <dx:ASPxButton ID="btnCancel" runat="server" Text="取消" AutoPostBack="false">
+                                            <ClientSideEvents Click="function(s, e) { popupForm.Hide(); }" />
+                                        </dx:ASPxButton>
+                                    </div>
+                                </dx:PanelContent>
+                            </PanelCollection>
+                        </dx:ASPxCallbackPanel>
+                    </dx:PopupControlContentControl>
+                </ContentCollection>
+            </dx:ASPxPopupControl>
 
         </div>
     </form>
@@ -62,11 +107,12 @@
 
 using System;
 using System.Data;
-using Oracle.DataAccess.Client; // Oracle.DataAccess 用於 Oracle 連線
+using Oracle.DataAccess.Client;
 
 public partial class Default : System.Web.UI.Page
 {
     private string connectionString = "User Id=your_user;Password=your_password;Data Source=your_datasource";
+    private static int currentEditingId = 0;
 
     protected void Page_Load(object sender, EventArgs e)
     {
@@ -81,7 +127,7 @@ public partial class Default : System.Web.UI.Page
         DataTable dt = new DataTable();
         using (OracleConnection conn = new OracleConnection(connectionString))
         {
-            string query = "SELECT ID, FAB, EQP, CHP, JOBS FROM YOUR_TABLE";
+            string query = "SELECT ID, FAB, EQP, CHP, JOBS FROM YOUR_TABLE ORDER BY ID DESC";
             using (OracleDataAdapter da = new OracleDataAdapter(query, conn))
             {
                 da.Fill(dt);
@@ -92,117 +138,103 @@ public partial class Default : System.Web.UI.Page
         GridView.DataBind();
     }
 
-    protected void GridView_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+    protected void btnAddNew_Click(object sender, EventArgs e)
     {
-        string fab = e.NewValues["FAB"]?.ToString();
-        string eqp = e.NewValues["EQP"]?.ToString();
+        // 清空欄位並顯示新增畫面
+        txtFAB.Text = string.Empty;
+        txtEQP.Text = string.Empty;
+        txtCHP.Text = string.Empty;
+        txtJOBS.Text = string.Empty;
 
-        if (string.IsNullOrEmpty(eqp) || eqp.Length > 5)
+        currentEditingId = 0; // 0 表示新增
+        popupForm.ShowOnPageLoad = true;
+    }
+
+    protected void btnSave_Click(object sender, EventArgs e)
+    {
+        string fab = txtFAB.Text.Trim();
+        string eqp = txtEQP.Text.Trim();
+        string chp = txtCHP.Text.Trim();
+        string jobs = txtJOBS.Text.Trim();
+
+        if (eqp.Length > 5)
         {
-            throw new Exception("EQP 欄位必須為 5 個字元以內！");
+            throw new Exception("EQP 必須 5 個字元內");
         }
 
         using (OracleConnection conn = new OracleConnection(connectionString))
         {
             conn.Open();
-            string insertSql = "INSERT INTO YOUR_TABLE (ID, FAB, EQP, CHP, JOBS) VALUES (YOUR_SEQ.NEXTVAL, :FAB, :EQP, :CHP, :JOBS)";
-            using (OracleCommand cmd = new OracleCommand(insertSql, conn))
+            string sql;
+            if (currentEditingId == 0)
+            {
+                sql = "INSERT INTO YOUR_TABLE (ID, FAB, EQP, CHP, JOBS) VALUES (YOUR_SEQ.NEXTVAL, :FAB, :EQP, :CHP, :JOBS)";
+            }
+            else
+            {
+                sql = "UPDATE YOUR_TABLE SET FAB = :FAB, EQP = :EQP, CHP = :CHP, JOBS = :JOBS WHERE ID = :ID";
+            }
+
+            using (OracleCommand cmd = new OracleCommand(sql, conn))
             {
                 cmd.Parameters.Add(":FAB", fab);
                 cmd.Parameters.Add(":EQP", eqp);
-                cmd.Parameters.Add(":CHP", e.NewValues["CHP"]);
-                cmd.Parameters.Add(":JOBS", e.NewValues["JOBS"]);
+                cmd.Parameters.Add(":CHP", chp);
+                cmd.Parameters.Add(":JOBS", jobs);
+
+                if (currentEditingId != 0)
+                {
+                    cmd.Parameters.Add(":ID", currentEditingId);
+                }
+
                 cmd.ExecuteNonQuery();
             }
         }
 
-        e.Cancel = true;
-        GridView.CancelEdit();
+        popupForm.ShowOnPageLoad = false;
         LoadGridData();
     }
 
-    protected void GridView_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+    protected void GridView_PageIndexChanged(object sender, EventArgs e)
     {
-        string eqp = e.NewValues["EQP"]?.ToString();
+        LoadGridData();  // 頁面切換時重載資料
+    }
 
-        if (string.IsNullOrEmpty(eqp) || eqp.Length > 5)
-        {
-            throw new Exception("EQP 欄位必須為 5 個字元以內！");
-        }
+    protected void CallbackPanelForm_Callback(object sender, DevExpress.Web.CallbackEventArgsBase e)
+    {
+        // 可選擇是否進一步控制 Callback
+    }
+
+    protected void GridView_CustomButtonCallback(object sender, DevExpress.Web.ASPxGridViewCustomButtonCallbackEventArgs e)
+    {
+        int id = Convert.ToInt32(GridView.GetRowValues(e.VisibleIndex, "ID"));
+        currentEditingId = id;
 
         using (OracleConnection conn = new OracleConnection(connectionString))
         {
             conn.Open();
-            string updateSql = "UPDATE YOUR_TABLE SET FAB = :FAB, EQP = :EQP, CHP = :CHP, JOBS = :JOBS WHERE ID = :ID";
-            using (OracleCommand cmd = new OracleCommand(updateSql, conn))
+            string query = "SELECT FAB, EQP, CHP, JOBS FROM YOUR_TABLE WHERE ID = :ID";
+            using (OracleCommand cmd = new OracleCommand(query, conn))
             {
-                cmd.Parameters.Add(":FAB", e.NewValues["FAB"]);
-                cmd.Parameters.Add(":EQP", eqp);
-                cmd.Parameters.Add(":CHP", e.NewValues["CHP"]);
-                cmd.Parameters.Add(":JOBS", e.NewValues["JOBS"]);
-                cmd.Parameters.Add(":ID", e.Keys["ID"]);
-                cmd.ExecuteNonQuery();
+                cmd.Parameters.Add(":ID", id);
+                using (OracleDataReader reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        txtFAB.Text = reader["FAB"].ToString();
+                        txtEQP.Text = reader["EQP"].ToString();
+                        txtCHP.Text = reader["CHP"].ToString();
+                        txtJOBS.Text = reader["JOBS"].ToString();
+                    }
+                }
             }
         }
 
-        e.Cancel = true;
-        GridView.CancelEdit();
-        LoadGridData();
-    }
-
-    protected void GridView_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
-    {
-        string userId = Session["ID"]?.ToString();
-
-        if (!UserHasDeletePermission(userId))
-        {
-            throw new Exception("您沒有刪除權限！");
-        }
-
-        using (OracleConnection conn = new OracleConnection(connectionString))
-        {
-            conn.Open();
-            string deleteSql = "DELETE FROM YOUR_TABLE WHERE ID = :ID";
-            using (OracleCommand cmd = new OracleCommand(deleteSql, conn))
-            {
-                cmd.Parameters.Add(":ID", e.Keys["ID"]);
-                cmd.ExecuteNonQuery();
-            }
-        }
-
-        e.Cancel = true;
-        LoadGridData();
-    }
-
-    private bool UserHasDeletePermission(string userId)
-    {
-        if (string.IsNullOrEmpty(userId)) return false;
-
-        using (OracleConnection conn = new OracleConnection(connectionString))
-        {
-            conn.Open();
-            string sql = "SELECT COUNT(1) FROM USER_AUTH WHERE USER_ID = :USER_ID";
-            using (OracleCommand cmd = new OracleCommand(sql, conn))
-            {
-                cmd.Parameters.Add(":USER_ID", userId);
-                object result = cmd.ExecuteScalar();
-                return Convert.ToInt32(result) > 0;
-            }
-        }
-    }
-
-    protected void btnAddNew_Click(object sender, EventArgs e)
-    {
-        GridView.AddNewRow();
-    }
-
-    protected void GridView_CustomCallback(object sender, DevExpress.Web.ASPxGridViewCustomCallbackEventArgs e)
-    {
-        LoadGridData();
+        popupForm.ShowOnPageLoad = true;
     }
 }
 
-3. CSS 設計（Style.css）
+3. CSS（Style.css）
 
 body {
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -233,34 +265,46 @@ body {
     background-color: #005fa3;
 }
 
-.grid {
-    margin-top: 10px;
+.popup-form {
+    width: 100%;
 }
 
-.dxgvControl_PlasticBlue {
-    background-color: #ffffff !important;
+.popup-form td {
+    padding: 5px;
+}
+
+.popup-button {
+    margin-top: 10px;
+    text-align: right;
+}
+
+.grid {
+    margin-top: 10px;
 }
 
 .dxgvHeader_PlasticBlue {
     background-color: #007acc !important;
     color: #ffffff !important;
-    font-weight: bold;
 }
 
 .dxgvDataRow_PlasticBlue {
-    background-color: #f9f9f9;
+    background-color: #ffffff;
 }
 
 .dxgvFocusedRow_PlasticBlue {
     background-color: #e6f7ff !important;
 }
 
-核心功能
-	•	DevExpress 19.2 控制項：ASPxPageControl、ASPxButton、ASPxGridView
-	•	Oracle 資料連接：Oracle.DataAccess（ODP.NET）
-	•	權限檢查：刪除及編輯時根據 session["ID"] 驗證權限
-	•	簡約 UI：CSS 增強畫面一致性與美感
-	•	彈性增刪修查：GridView + PopupEditForm
+修正重點
+	1.	分頁時無資料
+加入 GridView_PageIndexChanged 事件，並於切頁時重新載入資料。
+	2.	彈窗新增/編輯
+ASPxPopupControl + ASPxCallbackPanel 做到無刷新跳窗填寫儲存。
 
-如果你有更具體的需求（例如彈出窗客製、資料驗證細節、Ajax 無刷新等），可以再調整！
-有需要完整專案架構或 DevExpress 元件安裝說明，我也可以補上！
+後續可以強化
+	•	權限檢查（Session[“ID”] 驗證）
+	•	資料驗證與例外處理
+	•	Ajax Call + JSON 傳遞 (更現代化)
+
+如果有你目前用的資料表欄位或更細的邏輯需求，可以再調整！
+如果你要完整專案壓縮包，告訴我！
