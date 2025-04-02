@@ -11,3 +11,17 @@ SELECT sj.setting_id,
 FROM split_jobs sj
 JOIN spc_job_setting j ON sj.job_id = j.job_id
 GROUP BY sj.setting_id;
+
+
+SELECT t.setting_id,
+       RTRIM(
+         XMLAGG(
+           XMLELEMENT(e, j.job_name || ';') ORDER BY j.job_id
+         ).EXTRACT('//text()').getClobVal()
+       , ';') AS job_names
+FROM spc_tool_rank_setting t
+CROSS JOIN XMLTABLE(
+    'ora:tokenize(., ",")' PASSING t.jobs COLUMNS job_id VARCHAR2(50) PATH '.'
+) split_jobs
+JOIN spc_job_setting j ON split_jobs.job_id = j.job_id
+GROUP BY t.setting_id;
