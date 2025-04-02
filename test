@@ -1,8 +1,13 @@
-SELECT t.setting_id, 
+WITH split_jobs AS (
+    SELECT t.setting_id, 
+           TRIM(REGEXP_SUBSTR(t.jobs, '[^,]+', 1, LEVEL)) AS job_id
+    FROM spc_tool_rank_setting t
+    CONNECT BY LEVEL <= REGEXP_COUNT(t.jobs, ',') + 1
+    AND PRIOR t.setting_id = t.setting_id
+    AND PRIOR DBMS_RANDOM.VALUE IS NOT NULL
+)
+SELECT sj.setting_id, 
        LISTAGG(j.job_name, ';') WITHIN GROUP (ORDER BY j.job_id) AS job_names
-FROM spc_tool_rank_setting t
-CROSS JOIN XMLTABLE(
-    'ora:tokenize(., ",")' PASSING t.jobs COLUMNS job_id VARCHAR2(50) PATH '.'
-) split_jobs
-JOIN spc_job_setting j ON split_jobs.job_id = j.job_id
-GROUP BY t.setting_id;
+FROM split_jobs sj
+JOIN spc_job_setting j ON sj.job_id = j.job_id
+GROUP BY sj.setting_id;
