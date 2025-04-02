@@ -1,16 +1,46 @@
+問題 1：KeyFieldName 有多個欄位時怎麼辦？
+
+如果 KeyFieldName 不是單一欄位，而是多個欄位組成複合鍵，你需要：
+	1.	改用 e.Keys 來取得所有鍵值
+	2.	使用 DataTable.Select() 來查找對應的資料列（因為 DataTable.Rows.Find() 只適用於單一主鍵）
+
+範例（複合鍵處理）
+
+1. 設定 KeyFieldName
+
+<dx:ASPxGridView ID="gridView" runat="server" AutoGenerateColumns="False" 
+    KeyFieldName="ProductID,CategoryID"
+    OnRowUpdating="gridView_RowUpdating">
+    <SettingsEditing Mode="Inline" />
+    <Columns>
+        <dx:GridViewCommandColumn ShowEditButton="true" />
+        <dx:GridViewDataTextColumn FieldName="ProductID" />
+        <dx:GridViewDataTextColumn FieldName="CategoryID" />
+        <dx:GridViewDataTextColumn FieldName="ProductName" />
+    </Columns>
+</dx:ASPxGridView>
+
+2. RowUpdating 事件處理
+
 protected void gridView_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
 {
     e.Cancel = true;  // 取消資料庫更新
     gridView.CancelEdit();  // 結束編輯模式
 
-    // 取得目前的資料來源（Session 或其他存放的 DataTable）
+    // 取得目前的 DataTable
     DataTable dt = Session["GridViewData"] as DataTable;
     if (dt != null)
     {
-        // 找到要更新的列
-        DataRow row = dt.Rows.Find(e.Keys["ID"]);  // 確保 KeyFieldName 是 "ID"
-        if (row != null)
+        // 取得複合主鍵的值
+        string productID = e.Keys["ProductID"].ToString();
+        string categoryID = e.Keys["CategoryID"].ToString();
+
+        // 使用 DataTable.Select() 找到符合條件的資料列
+        DataRow[] rows = dt.Select($"ProductID = '{productID}' AND CategoryID = '{categoryID}'");
+        if (rows.Length > 0)
         {
+            DataRow row = rows[0];  // 取得第一筆匹配的資料列
+
             // 使用 e.NewValues 更新 DataTable 的值
             foreach (DictionaryEntry entry in e.NewValues)
             {
@@ -19,7 +49,52 @@ protected void gridView_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataU
         }
     }
 
-    // 重新綁定 GridView 來顯示更新後的值
+    // 重新綁定 GridView，讓頁面更新
     gridView.DataSource = dt;
     gridView.DataBind();
 }
+
+問題 2：如何知道資料來源的 Session 變數名稱？
+
+如果你不確定 Session 存放資料的變數名稱，你可以：
+	1.	查看 Page_Load 或 DataBinding 時的 Session 設定
+	2.	使用 Session.Keys 來列出所有 Session 變數名稱
+	3.	直接在 RowUpdating 中檢查可用的 Session 變數
+
+1. 檢查 Page_Load
+
+通常在 Page_Load 會有類似：
+
+Session["GridViewData"] = myDataTable;
+
+這表示資料來源的 Session 變數名稱是 "GridViewData"。
+
+2. 列出所有 Session 變數名稱
+
+你可以在 RowUpdating 事件中加入：
+
+foreach (string key in Session.Keys)
+{
+    System.Diagnostics.Debug.WriteLine($"Session Key: {key}");
+}
+
+這樣可以在 輸出視窗（Output Window） 看到有哪些 Session 變數。
+
+3. 直接檢查 Session 是否存在
+
+if (Session["GridViewData"] != null)
+{
+    DataTable dt = Session["GridViewData"] as DataTable;
+}
+else
+{
+    throw new Exception("Session['GridViewData'] is missing!");
+}
+
+這樣當 Session 沒有資料時，會丟出錯誤，幫助你找出問題。
+
+總結
+
+✔ KeyFieldName 有多個欄位時，使用 DataTable.Select() 來查找資料
+✔ Session 的變數名稱通常在 Page_Load 設定，或用 Session.Keys 列出變數名稱
+✔ 在 RowUpdating 事件中確保 Session 存在，避免 NullReferenceException
