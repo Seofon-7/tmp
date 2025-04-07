@@ -1,9 +1,4 @@
-在 **ASP.NET Web Forms (ASPX) + DevExpress 19.2 + .NET 4.7.2** 的環境下，你可以在 `GridViewDataColumn` 內處理使用者輸入並根據該輸入查詢 **Oracle 資料庫**，然後將結果填入其他欄位。
-
-### **步驟概述**
-1. **在 ASPX 頁面中建立 `ASPxGridView`**。
-2. **在 Code-Behind (`.aspx.cs`) 設定事件**，當使用者填寫欄位時觸發查詢。
-3. **執行 Oracle 查詢** 並更新目標欄位。
+好的！在 **ASP.NET Web Forms (ASPX) + DevExpress 19.2 + .NET 4.7.2** 環境中，你可以使用 `CellValueChanged` 事件來監聽欄位變更，並自動執行 Oracle 資料庫查詢以填入對應的欄位。
 
 ---
 
@@ -12,15 +7,17 @@
 <%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
 <asp:Content runat="server" ID="BodyContent" ContentPlaceHolderID="MainContent">
     <dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False"
-        OnCellEditorInitialize="ASPxGridView1_CellEditorInitialize"
-        OnRowUpdating="ASPxGridView1_RowUpdating">
+        OnCellValueChanged="ASPxGridView1_CellValueChanged">
         <Columns>
             <dx:GridViewDataTextColumn FieldName="SearchColumn" Caption="輸入欄位" />
-            <dx:GridViewDataTextColumn FieldName="TargetColumn" Caption="自動填入欄位" />
+            <dx:GridViewDataTextColumn FieldName="TargetColumn" Caption="自動填入欄位" ReadOnly="true"/>
         </Columns>
     </dx:ASPxGridView>
 </asp:Content>
 ```
+- `SearchColumn`：使用者輸入的欄位。
+- `TargetColumn`：根據 `SearchColumn` 內容查詢 Oracle，並填入的結果欄位。
+
 ---
 
 ### **Code-Behind (`Default.aspx.cs`)**
@@ -36,7 +33,7 @@ public partial class Default : System.Web.UI.Page
     {
         if (!IsPostBack)
         {
-            BindGrid(); // 初始化 GridView
+            BindGrid();
         }
     }
 
@@ -46,24 +43,24 @@ public partial class Default : System.Web.UI.Page
         dt.Columns.Add("SearchColumn", typeof(string));
         dt.Columns.Add("TargetColumn", typeof(string));
         
-        dt.Rows.Add("", ""); // 初始空白行
+        dt.Rows.Add("", ""); // 初始化空白行
         ASPxGridView1.DataSource = dt;
         ASPxGridView1.DataBind();
     }
 
-    protected void ASPxGridView1_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+    protected void ASPxGridView1_CellValueChanged(object sender, DevExpress.Web.Data.ASPxGridViewCellValueChangedEventArgs e)
     {
-        string inputValue = e.NewValues["SearchColumn"].ToString();
-        string resultFromDB = GetDataFromOracle(inputValue); // 執行查詢
-
-        if (!string.IsNullOrEmpty(resultFromDB))
+        if (e.Column.FieldName == "SearchColumn") // 監聽指定欄位變更
         {
-            e.NewValues["TargetColumn"] = resultFromDB; // 更新目標欄位
-        }
+            string inputValue = e.Value.ToString();
+            string resultFromDB = GetDataFromOracle(inputValue); // 執行查詢
 
-        ASPxGridView1.CancelEdit();
-        e.Cancel = true; // 取消預設行為，手動更新
-        BindGrid();
+            if (!string.IsNullOrEmpty(resultFromDB))
+            {
+                ASPxGridView1.GetRowValues(e.RowIndex, "TargetColumn");
+                ASPxGridView1.SetRowValues(e.RowIndex, "TargetColumn", resultFromDB); // 更新對應欄位
+            }
+        }
     }
 
     private string GetDataFromOracle(string inputValue)
@@ -95,11 +92,13 @@ public partial class Default : System.Web.UI.Page
 
 ---
 
-### **解法說明**
-- **`ASPxGridView1_RowUpdating`** 事件會在使用者編輯欄位後觸發：
-  - 取得 `SearchColumn` 的值。
-  - 查詢 Oracle 資料庫。
-  - 將查詢結果填入 `TargetColumn`。
-- **`BindGrid` 方法** 初始載入 DataTable，確保 GridView 正常顯示。
+### **方法說明**
+1. **使用 `CellValueChanged` 事件**：
+   - 當 `SearchColumn` 欄位變更時，觸發 Oracle 資料庫查詢。
+   - 透過 `SetRowValues` 直接更新 `TargetColumn` 的值。
+   
+2. **查詢 Oracle 資料庫**：
+   - 取得 `SearchColumn` 的值，並執行 `OracleCommand` 查詢。
+   - 將結果填入 `TargetColumn` 欄位。
 
-這樣的方式能夠在 **ASP.NET Web Forms** 內部完成 **即時資料填充**，符合你的 **.NET 4.7.2 + DevExpress 19.2** 環境！希望這個解法對你有幫助，你可以試試看，看是否符合你的需求！🚀
+這樣的方式不需要額外的 `RowUpdating`，可以直接在欄位變更時執行 **即時資料填充**！希望這個解法符合你的需求，讓你的 DevExpress Grid 在 **ASP.NET Web Forms** 環境下更有效運作！🚀
