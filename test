@@ -1,27 +1,99 @@
-WITH split_jobs AS (
-    SELECT t.setting_id, 
-           TRIM(REGEXP_SUBSTR(t.jobs, '[^,]+', 1, LEVEL)) AS job_id
-    FROM spc_tool_rank_setting t
-    CONNECT BY LEVEL <= REGEXP_COUNT(t.jobs, ',') + 1
-    AND PRIOR t.setting_id = t.setting_id
-    AND PRIOR DBMS_RANDOM.VALUE IS NOT NULL
-)
-SELECT sj.setting_id, 
-       LISTAGG(j.job_name, ';') WITHIN GROUP (ORDER BY j.job_id) AS job_names
-FROM split_jobs sj
-JOIN spc_job_setting j ON sj.job_id = j.job_id
-GROUP BY sj.setting_id;
+了解，你希望使用的是 GridViewDataColumn（非 EditItemTemplate），也就是讓 DevExpress 自動產生編輯欄位，但仍然要實現：
 
+	使用者在 PopupEditForm 中輸入某欄位（如 ItemCode）後，自動從 Oracle 查值並填到另一欄位（如 ItemName）
 
-SELECT t.setting_id,
-       RTRIM(
-         XMLAGG(
-           XMLELEMENT(e, j.job_name || ';') ORDER BY j.job_id
-         ).EXTRACT('//text()').getClobVal()
-       , ';') AS job_names
-FROM spc_tool_rank_setting t
-CROSS JOIN XMLTABLE(
-    'ora:tokenize(., ",")' PASSING t.jobs COLUMNS job_id VARCHAR2(50) PATH '.'
-) split_jobs
-JOIN spc_job_setting j ON split_jobs.job_id = j.job_id
-GROUP BY t.setting_id;
+這在不自訂 EditItemTemplate 的前提下，可以透過：
+	•	CellEditorInitialize 註冊 ClientInstanceName
+	•	使用 DevExpress 的 ASPxTextBox（透過轉型）加事件
+	•	再搭配 ASPxCallback 回傳查詢值
+
+✅ 最簡實作方式（保留 GridViewDataColumn，不用 EditItemTemplate）
+
+1. GridView 欄位設計
+
+<dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID" AutoGenerateColumns="False"
+    OnCellEditorInitialize="gridView_CellEditorInitialize">
+    <SettingsEditing Mode="PopupEditForm" />
+    <Columns>
+        <!-- 使用者輸入 -->
+        <dx:GridViewDataTextColumn FieldName="ItemCode" Caption="Item Code" />
+
+        <!-- 自動帶入 -->
+        <dx:GridViewDataTextColumn FieldName="ItemName" Caption="Item Name" PropertiesTextEdit-ReadOnly="true" />
+    </Columns>
+</dx:ASPxGridView>
+
+2. 加入 ASPxCallback 控制項
+
+<dx:ASPxCallback ID="cbItemLookup" runat="server" ClientInstanceName="cbItemLookup" OnCallback="cbItemLookup_Callback">
+    <ClientSideEvents CallbackComplete="onItemLookupComplete" />
+</dx:ASPxCallback>
+
+3. JavaScript 客戶端事件
+
+<script type="text/javascript">
+    var itemCodeEditor, itemNameEditor;
+
+    function onItemCodeChanged(s, e) {
+        var code = s.GetText();
+        if (code) {
+            cbItemLookup.PerformCallback(code);
+        }
+    }
+
+    function onItemLookupComplete(s, e) {
+        var name = cbItemLookup.cpResult;
+        if (itemNameEditor) {
+            itemNameEditor.SetText(name);
+        }
+    }
+</script>
+
+4. 伺服端：初始化欄位編輯器 ClientInstanceName 與事件
+
+protected void gridView_CellEditorInitialize(object sender, ASPxGridViewEditorEventArgs e)
+{
+    if (e.Column.FieldName == "ItemCode")
+    {
+        ASPxTextBox editor = e.Editor as ASPxTextBox;
+        editor.ClientInstanceName = "itemCodeEditor";
+        editor.ClientSideEvents.LostFocus = "onItemCodeChanged";
+    }
+
+    if (e.Column.FieldName == "ItemName")
+    {
+        ASPxTextBox editor = e.Editor as ASPxTextBox;
+        editor.ClientInstanceName = "itemNameEditor";
+    }
+}
+
+5. Oracle 查詢 Callback（後端）
+
+protected void cbItemLookup_Callback(object sender, DevExpress.Web.CallbackEventArgs e)
+{
+    string itemCode = e.Parameter;
+    string itemName = "";
+
+    using (var conn = new OracleConnection("your_connection_string"))
+    {
+        conn.Open();
+        using (var cmd = new OracleCommand("SELECT ITEM_NAME FROM ITEM_TABLE WHERE ITEM_CODE = :code", conn))
+        {
+            cmd.Parameters.Add(new OracleParameter("code", itemCode));
+            using (var reader = cmd.ExecuteReader())
+            {
+                if (reader.Read())
+                    itemName = reader["ITEM_NAME"].ToString();
+            }
+        }
+    }
+
+    cbItemLookup.JSProperties["cpResult"] = itemName;
+}
+
+✅ 優點
+	•	使用的是 GridViewDataColumn（自動產生編輯欄位）
+	•	沒有用 EditItemTemplate，維持 DevExpress 原生編輯體驗
+	•	支援 DevExpress 19.2 與 .NET Framework 4.7.2
+
+要不要我幫你再補上 Save 資料的時候如何取得這些欄位值？或者根據你目前專案中的欄位名與查詢語法，幫你整合？
