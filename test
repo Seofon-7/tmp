@@ -1,27 +1,41 @@
-在 .NET Framework 4.7.2 和 DevExpress 19.2 中，你可以使用 `GridViewDataColumn` 的 `CellValueChanged` 事件來觸發 Oracle 資料庫查詢，並將結果填入另一個欄位。以下是適用於你的環境的完整解決方案：
+如果你希望在 **DevExpress 19.2** 的 **GridViewDataColumn** 中執行資料庫查詢，並且不使用 `XtraGrid.Views`，可以考慮透過 **BindingSource** 或直接操作 **GridControl** 來完成。
 
-### **步驟概述**
-1. **監聽 `CellValueChanged` 事件**：當使用者填寫完某欄位後觸發。
-2. **執行 Oracle SQL 查詢**：使用該欄位的值來搜尋對應的資料。
-3. **填入結果**：將查詢結果寫入另一個欄位。
-
-### **程式碼範例（C#，適用於 .NET 4.7.2 + DevExpress 19.2）**
+### **方法 1：使用 BindingSource 更新資料**
+這種方式讓資料綁定到 `BindingSource`，並在查詢後直接更新 `DataTable`：
 ```csharp
 using System;
 using System.Data;
-using System.Data.OracleClient; // 適用於 .NET Framework 4.7.2
-using DevExpress.XtraGrid.Views.Grid;
+using System.Data.OracleClient;
+using System.Windows.Forms;
+using DevExpress.XtraGrid;
 
-private void gridView1_CellValueChanged(object sender, DevExpress.XtraGrid.Views.Base.CellValueChangedEventArgs e)
+private BindingSource bindingSource = new BindingSource();
+private DataTable dataTable = new DataTable();
+
+private void Form_Load(object sender, EventArgs e)
 {
-    if (e.Column.FieldName == "SearchColumn") // 監聽某欄位
-    {
-        string inputValue = e.Value.ToString();
-        string resultFromDB = GetDataFromOracle(inputValue); // 查詢 Oracle 資料庫
+    // 初始化 GridControl
+    dataTable.Columns.Add("SearchColumn", typeof(string));
+    dataTable.Columns.Add("TargetColumn", typeof(string));
+    bindingSource.DataSource = dataTable;
+    gridControl1.DataSource = bindingSource;
+}
 
-        if (!string.IsNullOrEmpty(resultFromDB))
+private void gridControl1_ProcessGridKey(object sender, KeyEventArgs e)
+{
+    if (e.KeyCode == Keys.Enter)
+    {
+        GridControl grid = sender as GridControl;
+        if (grid != null)
         {
-            gridView1.SetRowCellValue(e.RowHandle, gridView1.Columns["TargetColumn"], resultFromDB); // 填入結果
+            int rowIndex = grid.FocusedView.FocusedRowHandle; // 獲取當前行索引
+            string inputValue = dataTable.Rows[rowIndex]["SearchColumn"].ToString();
+            
+            string resultFromDB = GetDataFromOracle(inputValue);
+            if (!string.IsNullOrEmpty(resultFromDB))
+            {
+                dataTable.Rows[rowIndex]["TargetColumn"] = resultFromDB;
+            }
         }
     }
 }
@@ -31,7 +45,7 @@ private string GetDataFromOracle(string inputValue)
 {
     string result = "";
     string connectionString = "your_connection_string";
-    
+
     using (OracleConnection conn = new OracleConnection(connectionString))
     {
         conn.Open();
@@ -53,9 +67,28 @@ private string GetDataFromOracle(string inputValue)
 }
 ```
 
-### **關鍵調整**
-- 使用 `gridView1.CellValueChanged` 事件來監聽輸入變更。
-- 使用 `gridView1.SetRowCellValue()` 來更新另一個欄位。
-- 透過 `OracleClient` 執行 SQL 查詢。
+### **方法 2：直接操作 GridControl**
+如果你不想使用 `XtraGrid.Views`，你可以透過 **GridControl** 來直接處理事件，如 `KeyDown` 或 `ProcessGridKey`：
+```csharp
+private void gridControl1_KeyDown(object sender, KeyEventArgs e)
+{
+    if (e.KeyCode == Keys.Enter)
+    {
+        GridControl grid = sender as GridControl;
+        if (grid != null)
+        {
+            int rowIndex = grid.FocusedView.FocusedRowHandle;
+            string inputValue = grid.MainView.GetRowCellValue(rowIndex, "SearchColumn").ToString();
+            
+            string resultFromDB = GetDataFromOracle(inputValue);
+            if (!string.IsNullOrEmpty(resultFromDB))
+            {
+                grid.MainView.SetRowCellValue(rowIndex, "TargetColumn", resultFromDB);
+            }
+        }
+    }
+}
+```
+這樣可以避免 `GridView.Views` 相關的命名空間，但仍然能夠完成相同的資料填充功能。
 
-這樣的方式在 DevExpress 19.2 和 .NET 4.7.2 環境下都能順利運行！如果你的環境有不同的需求，例如 `DbProviderFactory` 或 `Oracle.ManagedDataAccess.Client`，也可以進一步優化查詢方式。希望這能幫助到你！🚀
+這些方法適合 **.NET 4.7.2 + DevExpress 19.2**，並且無需使用 `XtraGrid.Views` 命名空間。希望這個解法能符合你的需求！如果有其他細節需要調整，我很樂意協助你。 🚀
