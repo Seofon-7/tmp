@@ -1,79 +1,53 @@
-完全沒問題！以下是針對 .NET Framework 4.7.2 搭配 DevExpress 19.2 可直接使用的語法，實現「點選 GridView 中的欄位顯示完整資料」的功能，並確保：
-	•	可用在 Web Forms 專案
-	•	使用 ASPxGridView + ASPxPopupControl
-	•	與你的 PopupEditForm 編輯模式不衝突
+了解，你用的是 GridViewDataColumn（也就是 GridViewDataTextColumn 的基底類型），這樣是 沒問題的！剛剛的邏輯依然適用，只要你在 Columns 裡面是用像下面這種結構，就可以：
 
-✅ 步驟一：GridView（固定欄寬 + 顯示省略號）
+<dx:GridViewDataColumn FieldName="Remarks" Caption="備註">
+    <CellStyle CssClass="ellipsis-cell" />
+</dx:GridViewDataColumn>
+<dx:GridViewDataColumn FieldName="Comment" Caption="說明">
+    <CellStyle CssClass="ellipsis-cell" />
+</dx:GridViewDataColumn>
 
-<dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID"
-    OnHtmlRowPrepared="gridView_HtmlRowPrepared">
-    <SettingsEditing Mode="PopupEditForm" />
-    <Columns>
-        <dx:GridViewDataTextColumn FieldName="Remarks" Caption="備註">
-            <CellStyle CssClass="ellipsis-cell" />
-        </dx:GridViewDataTextColumn>
-    </Columns>
-</dx:ASPxGridView>
-
-✅ 步驟二：CSS（固定欄寬 + ...）
-
-<style>
-    .ellipsis-cell {
-        max-width: 150px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        cursor: pointer;
-    }
-</style>
-
-✅ 步驟三：後端 C# 加上 onclick 屬性
+✅ 修改後的後端程式碼（針對 GridViewDataColumn）
 
 protected void gridView_HtmlRowPrepared(object sender, ASPxGridViewTableRowEventArgs e)
 {
     if (e.RowType != DevExpress.Web.GridViewRowType.Data)
         return;
 
-    string remarks = e.GetValue("Remarks")?.ToString();
-    if (!string.IsNullOrEmpty(remarks))
+    // 你想讓哪些欄位點擊顯示全文
+    string[] clickableFields = { "Remarks", "Comment", "Detail" };
+
+    foreach (string field in clickableFields)
     {
-        // 替換單引號避免 JS 錯誤
-        string safeText = remarks.Replace("'", "\\'").Replace(Environment.NewLine, "\\n");
-        int colIndex = gridView.Columns["Remarks"].VisibleIndex;
-        e.Row.Cells[colIndex].Attributes["onclick"] = $"showTextPopup('{safeText}')";
-        e.Row.Cells[colIndex].Attributes["style"] = "cursor:pointer";
+        var col = gridView.Columns[field] as GridViewDataColumn;
+        if (col == null || !col.Visible) continue;
+
+        object cellValue = e.GetValue(field);
+        if (cellValue == null) continue;
+
+        string value = cellValue.ToString();
+        if (!string.IsNullOrEmpty(value))
+        {
+            string safeText = value.Replace("'", "\\'").Replace(Environment.NewLine, "\\n");
+            int colIndex = col.VisibleIndex;
+
+            e.Row.Cells[colIndex].Attributes["onclick"] = $"showTextPopup('{safeText}')";
+            e.Row.Cells[colIndex].Attributes["style"] = "cursor:pointer";
+        }
     }
 }
 
-✅ 步驟四：ASPxPopupControl（彈窗視窗）
+✅ 搭配這些一起使用（保持不變）
+	1.	ASPxPopupControl 顯示全文
+	2.	JavaScript showTextPopup(content)
+	3.	CSS 設定固定欄寬加省略號（ellipsis-cell）
 
-<dx:ASPxPopupControl ID="popupTextViewer" runat="server" ClientInstanceName="popupTextViewer"
-    PopupHorizontalAlign="WindowCenter"
-    PopupVerticalAlign="WindowCenter"
-    CloseAction="CloseButton"
-    ShowCloseButton="true"
-    HeaderText="完整內容"
-    Width="400px" Height="200px">
-    <ContentCollection>
-        <dx:PopupControlContentControl>
-            <dx:ASPxMemo ID="memoContent" runat="server" ClientInstanceName="memoContent"
-                Width="100%" Height="100%" ReadOnly="true" />
-        </dx:PopupControlContentControl>
-    </ContentCollection>
-</dx:ASPxPopupControl>
+總結一下
 
-✅ 步驟五：JavaScript 顯示彈窗
+你用的是 GridViewDataColumn 沒有問題，只要在後端透過：
 
-<script type="text/javascript">
-    function showTextPopup(content) {
-        memoContent.SetText(content);
-        popupTextViewer.Show();
-    }
-</script>
+var col = gridView.Columns[field] as GridViewDataColumn;
 
-✅ 測試效果
-	•	若欄位超出寬度，自動顯示 ...
-	•	點一下該格，跳出完整資料
-	•	可搭配多欄位（你只要在後端 HtmlRowPrepared 加上其他欄位即可）
+去存取欄位，然後對應到那格 cell 加 onclick 屬性，就能完成你要的功能，而且多欄位也通用。
 
-如果你需要讓 多個欄位都可以這樣點選顯示全文，我可以再幫你寫成通用支援多欄位的版本。要我幫你加上嗎？
+需要的話我可以幫你加上「右邊放個小 icon 才能點」、「只能在檢視模式可點」等等進階功能。要我幫你做成這樣嗎？
