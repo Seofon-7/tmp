@@ -1,104 +1,77 @@
-好的！在 **ASP.NET Web Forms (ASPX) + DevExpress 19.2 + .NET 4.7.2** 環境中，你可以使用 `CellValueChanged` 事件來監聽欄位變更，並自動執行 Oracle 資料庫查詢以填入對應的欄位。
+了解了！以下是您所需的解決方案，它實現了在 ASP.NET 4.6.2 和 DevExpress 19.2 環境下，透過 Pop-up Edit Form 在填寫完某欄位後，將其值作為參數查詢 Oracle 資料庫，並將查詢結果代入到其他欄位的功能。
 
----
+以下是 ASPX 和 C# (CS) 檔案的範例內容：
 
-### **ASPX 頁面 (`Default.aspx`)**
-```asp
+### **ASPX 檔案**
+```aspx
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="PopupGridEdit.aspx.cs" Inherits="YourNamespace.PopupGridEdit" %>
 <%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
-<asp:Content runat="server" ID="BodyContent" ContentPlaceHolderID="MainContent">
-    <dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False"
-        OnCellValueChanged="ASPxGridView1_CellValueChanged">
-        <Columns>
-            <dx:GridViewDataTextColumn FieldName="SearchColumn" Caption="輸入欄位" />
-            <dx:GridViewDataTextColumn FieldName="TargetColumn" Caption="自動填入欄位" ReadOnly="true"/>
-        </Columns>
-    </dx:ASPxGridView>
-</asp:Content>
+
+<!DOCTYPE html>
+<html>
+<head runat="server">
+    <title>Popup Grid Edit</title>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID">
+            <SettingsEditing Mode="PopupEditForm" />
+            <Columns>
+                <dx:GridViewDataTextColumn FieldName="Column1" Caption="欄位1" />
+                <dx:GridViewDataTextColumn FieldName="Column2" Caption="欄位2" ReadOnly="True" />
+            </Columns>
+        </dx:ASPxGridView>
+    </form>
+</body>
+</html>
 ```
-- `SearchColumn`：使用者輸入的欄位。
-- `TargetColumn`：根據 `SearchColumn` 內容查詢 Oracle，並填入的結果欄位。
 
----
-
-### **Code-Behind (`Default.aspx.cs`)**
+### **CS 檔案**
 ```csharp
 using System;
-using System.Data;
-using System.Data.OracleClient; // 使用 .NET 4.7.2
-using DevExpress.Web;
+using System.Data.OracleClient; // 使用 Oracle 資料庫
+using System.Web.UI;
 
-public partial class Default : System.Web.UI.Page
+namespace YourNamespace
 {
-    protected void Page_Load(object sender, EventArgs e)
+    public partial class PopupGridEdit : Page
     {
-        if (!IsPostBack)
+        protected void Page_Load(object sender, EventArgs e)
         {
-            BindGrid();
+            // 初始化設定
         }
-    }
 
-    private void BindGrid()
-    {
-        DataTable dt = new DataTable();
-        dt.Columns.Add("SearchColumn", typeof(string));
-        dt.Columns.Add("TargetColumn", typeof(string));
-        
-        dt.Rows.Add("", ""); // 初始化空白行
-        ASPxGridView1.DataSource = dt;
-        ASPxGridView1.DataBind();
-    }
-
-    protected void ASPxGridView1_CellValueChanged(object sender, DevExpress.Web.Data.ASPxGridViewCellValueChangedEventArgs e)
-    {
-        if (e.Column.FieldName == "SearchColumn") // 監聽指定欄位變更
+        protected void ASPxGridView1_CellEditorInitialize(object sender, DevExpress.Web.ASPxGridViewEditorEventArgs e)
         {
-            string inputValue = e.Value.ToString();
-            string resultFromDB = GetDataFromOracle(inputValue); // 執行查詢
-
-            if (!string.IsNullOrEmpty(resultFromDB))
+            if (e.Column.FieldName == "Column1")
             {
-                ASPxGridView1.GetRowValues(e.RowIndex, "TargetColumn");
-                ASPxGridView1.SetRowValues(e.RowIndex, "TargetColumn", resultFromDB); // 更新對應欄位
+                e.Editor.ClientSideEvents.ValueChanged = "function(s, e) { SearchAndPopulate(s); }";
             }
         }
-    }
-
-    private string GetDataFromOracle(string inputValue)
-    {
-        string result = "";
-        string connectionString = "your_connection_string";
-
-        using (OracleConnection conn = new OracleConnection(connectionString))
-        {
-            conn.Open();
-            string query = "SELECT TargetColumn FROM YourTable WHERE SearchColumn = :inputValue";
-            using (OracleCommand cmd = new OracleCommand(query, conn))
-            {
-                cmd.Parameters.Add(":inputValue", OracleType.VarChar).Value = inputValue;
-
-                using (OracleDataReader reader = cmd.ExecuteReader())
-                {
-                    if (reader.Read())
-                    {
-                        result = reader["TargetColumn"].ToString();
-                    }
-                }
-            }
-        }
-        return result;
     }
 }
 ```
 
----
+### JavaScript 代碼
+```javascript
+function SearchAndPopulate(editor) {
+    var value = editor.GetValue();
+    if (value) {
+        // 呼叫後端查詢對應資料
+        $.ajax({
+            type: "POST",
+            url: "YourHandler.ashx", // 在後台處理查詢
+            data: { input: value },
+            success: function (result) {
+                // 將結果代入到 Column2
+                var grid = ASPxClientGridView.Cast('ASPxGridView1');
+                grid.GetEditor('Column2').SetValue(result);
+            }
+        });
+    }
+}
+```
 
-### **方法說明**
-1. **使用 `CellValueChanged` 事件**：
-   - 當 `SearchColumn` 欄位變更時，觸發 Oracle 資料庫查詢。
-   - 透過 `SetRowValues` 直接更新 `TargetColumn` 的值。
-   
-2. **查詢 Oracle 資料庫**：
-   - 取得 `SearchColumn` 的值，並執行 `OracleCommand` 查詢。
-   - 將結果填入 `TargetColumn` 欄位。
+這裡展示的是基本結構與邏輯，您需要根據實際需求補充具體資料庫連線、查詢語句及前後端交互內容。
 
-這樣的方式不需要額外的 `RowUpdating`，可以直接在欄位變更時執行 **即時資料填充**！希望這個解法符合你的需求，讓你的 DevExpress Grid 在 **ASP.NET Web Forms** 環境下更有效運作！🚀
+如果您有其他需求或遇到問題，可以隨時告訴我！ 😊
