@@ -1,14 +1,9 @@
-是的！你可以設定點擊 GridView 中某一格（例如備註欄或其他你想要的欄位），就會跳出 ASPxPopupControl，裡面顯示該儲存格的完整資料。這種做法非常適合欄位寬度有限、又需要顯示長文字的情境。
+完全沒問題！以下是針對 .NET Framework 4.7.2 搭配 DevExpress 19.2 可直接使用的語法，實現「點選 GridView 中的欄位顯示完整資料」的功能，並確保：
+	•	可用在 Web Forms 專案
+	•	使用 ASPxGridView + ASPxPopupControl
+	•	與你的 PopupEditForm 編輯模式不衝突
 
-✅ 你要的效果流程：
-	1.	GridView 顯示資料，每格固定欄寬（過長的文字用 ...）
-	2.	使用者 點某個欄位（例如「備註」或「說明」）
-	3.	跳出 Popup（非編輯視窗），顯示完整文字內容
-	4.	不會影響原本的編輯功能（PopupEditForm）
-
-✅ 實作範例（整合版）
-
-1. GridView + 固定欄位樣式（省略號）
+✅ 步驟一：GridView（固定欄寬 + 顯示省略號）
 
 <dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID"
     OnHtmlRowPrepared="gridView_HtmlRowPrepared">
@@ -20,52 +15,54 @@
     </Columns>
 </dx:ASPxGridView>
 
-2. CSS（固定寬度 + ...）
+✅ 步驟二：CSS（固定欄寬 + ...）
 
 <style>
     .ellipsis-cell {
         max-width: 150px;
-        overflow: hidden;
         white-space: nowrap;
+        overflow: hidden;
         text-overflow: ellipsis;
         cursor: pointer;
     }
 </style>
 
-3. PopupControl（顯示全文用）
-
-<dx:ASPxPopupControl ID="popupTextViewer" runat="server" ClientInstanceName="popupTextViewer"
-    PopupHorizontalAlign="WindowCenter"
-    PopupVerticalAlign="WindowCenter"
-    CloseAction="CloseButton"
-    HeaderText="完整內容"
-    Width="400px" Height="200px">
-    <ContentCollection>
-        <dx:PopupControlContentControl>
-            <dx:ASPxMemo ID="memoContent" runat="server" ClientInstanceName="memoContent" ReadOnly="true"
-                Width="100%" Height="100%" />
-        </dx:PopupControlContentControl>
-    </ContentCollection>
-</dx:ASPxPopupControl>
-
-4. 後端加 onclick 到資料列的某個欄位
+✅ 步驟三：後端 C# 加上 onclick 屬性
 
 protected void gridView_HtmlRowPrepared(object sender, ASPxGridViewTableRowEventArgs e)
 {
     if (e.RowType != DevExpress.Web.GridViewRowType.Data)
         return;
 
-    // 拿出你要處理的欄位（假設是 "Remarks"）
-    var text = e.GetValue("Remarks")?.ToString();
-    if (!string.IsNullOrEmpty(text))
+    string remarks = e.GetValue("Remarks")?.ToString();
+    if (!string.IsNullOrEmpty(remarks))
     {
+        // 替換單引號避免 JS 錯誤
+        string safeText = remarks.Replace("'", "\\'").Replace(Environment.NewLine, "\\n");
         int colIndex = gridView.Columns["Remarks"].VisibleIndex;
-        e.Row.Cells[colIndex].Attributes["onclick"] = $"showTextPopup('{text.Replace("'", "\\'")}')";
+        e.Row.Cells[colIndex].Attributes["onclick"] = $"showTextPopup('{safeText}')";
         e.Row.Cells[colIndex].Attributes["style"] = "cursor:pointer";
     }
 }
 
-5. JavaScript 顯示彈窗內容
+✅ 步驟四：ASPxPopupControl（彈窗視窗）
+
+<dx:ASPxPopupControl ID="popupTextViewer" runat="server" ClientInstanceName="popupTextViewer"
+    PopupHorizontalAlign="WindowCenter"
+    PopupVerticalAlign="WindowCenter"
+    CloseAction="CloseButton"
+    ShowCloseButton="true"
+    HeaderText="完整內容"
+    Width="400px" Height="200px">
+    <ContentCollection>
+        <dx:PopupControlContentControl>
+            <dx:ASPxMemo ID="memoContent" runat="server" ClientInstanceName="memoContent"
+                Width="100%" Height="100%" ReadOnly="true" />
+        </dx:PopupControlContentControl>
+    </ContentCollection>
+</dx:ASPxPopupControl>
+
+✅ 步驟五：JavaScript 顯示彈窗
 
 <script type="text/javascript">
     function showTextPopup(content) {
@@ -74,11 +71,9 @@ protected void gridView_HtmlRowPrepared(object sender, ASPxGridViewTableRowEvent
     }
 </script>
 
-✅ 效果示意
-	•	表格顯示：
-這是一段非常長的備註資料...
-	•	使用者點進儲存格：
--> 跳出一個彈窗視窗，內容為：
-這是一段非常長的備註資料完整顯示在這裡
+✅ 測試效果
+	•	若欄位超出寬度，自動顯示 ...
+	•	點一下該格，跳出完整資料
+	•	可搭配多欄位（你只要在後端 HtmlRowPrepared 加上其他欄位即可）
 
-要不要我幫你改造成通用版本，讓多個欄位都能這樣點擊跳出彈窗？還是要加「放大」圖示在儲存格右邊？這些都能做到喔！
+如果你需要讓 多個欄位都可以這樣點選顯示全文，我可以再幫你寫成通用支援多欄位的版本。要我幫你加上嗎？
