@@ -1,209 +1,84 @@
-這裡是完整的 **ASP.NET WebForms** 程式碼，結合 **DevExpress GridView**，並根據 **`欄位一` 進行合併 `新增` 按鈕**：
+是的！你可以設定點擊 GridView 中某一格（例如備註欄或其他你想要的欄位），就會跳出 ASPxPopupControl，裡面顯示該儲存格的完整資料。這種做法非常適合欄位寬度有限、又需要顯示長文字的情境。
 
-### **功能概述**
-✅ **根據 `欄位一` 進行合併，只顯示一個 `新增` 按鈕**  
-✅ **點擊 `新增` 按鈕時，彈出視窗，自動填入 `欄位一` 和 `欄位二`**  
-✅ **輸入 `欄位三` 的值後，點擊儲存，將數據寫入 Oracle**  
+✅ 你要的效果流程：
+	1.	GridView 顯示資料，每格固定欄寬（過長的文字用 ...）
+	2.	使用者 點某個欄位（例如「備註」或「說明」）
+	3.	跳出 Popup（非編輯視窗），顯示完整文字內容
+	4.	不會影響原本的編輯功能（PopupEditForm）
 
----
+✅ 實作範例（整合版）
 
-## **1. Web.config（設定 Oracle 連線）**
-```xml
-<configuration>
-  <connectionStrings>
-    <add name="OracleDB" 
-         connectionString="User Id=your_user;Password=your_password;Data Source=your_tns"
-         providerName="Oracle.DataAccess.Client"/>
-  </connectionStrings>
-</configuration>
-```
+1. GridView + 固定欄位樣式（省略號）
 
----
+<dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID"
+    OnHtmlRowPrepared="gridView_HtmlRowPrepared">
+    <SettingsEditing Mode="PopupEditForm" />
+    <Columns>
+        <dx:GridViewDataTextColumn FieldName="Remarks" Caption="備註">
+            <CellStyle CssClass="ellipsis-cell" />
+        </dx:GridViewDataTextColumn>
+    </Columns>
+</dx:ASPxGridView>
 
-## **2. Default.aspx（前端 UI）**
-```aspx
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Default.aspx.cs" Inherits="YourNamespace.Default" %>
-<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+2. CSS（固定寬度 + ...）
 
-<!DOCTYPE html>
-<html>
-<head runat="server">
-    <title>DevExpress Grid with Oracle</title>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <dx:ASPxCallbackPanel ID="CallbackPanel" runat="server" ClientInstanceName="cp" OnCallback="CallbackPanel_Callback">
-            <PanelCollection>
-                <dx:PanelContent>
-                    <!-- Toolbar -->
-                    <dx:ASPxToolbar ID="Toolbar" runat="server">
-                        <Items>
-                            <dx:ToolbarItem Text="申請" CommandName="Apply" CommandSource="Server" />
-                            <dx:ToolbarItem Text="刷新" CommandName="Refresh" CommandSource="Server" />
-                            <dx:ToolbarItem>
-                                <dx:ASPxTextBox ID="txtSearch" runat="server" Width="200px" />
-                                <dx:ASPxButton ID="btnSearch" runat="server" Text="搜尋" AutoPostBack="False"
-                                    ClientSideEvents-Click="function(s,e){ PerformSearch(); }" />
-                            </dx:ToolbarItem>
-                        </Items>
-                    </dx:ASPxToolbar>
+<style>
+    .ellipsis-cell {
+        max-width: 150px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        cursor: pointer;
+    }
+</style>
 
-                    <!-- GridView -->
-                    <dx:ASPxGridView ID="GridView1" runat="server" KeyFieldName="FIELD1" AutoGenerateColumns="False"
-                        OnCustomCallback="GridView1_CustomCallback">
-                        <Columns>
-                            <dx:GridViewDataTextColumn FieldName="FIELD1" Caption="欄位一" />
-                            <dx:GridViewDataTextColumn FieldName="FIELD2" Caption="欄位二" />
-                            <dx:GridViewDataTextColumn FieldName="FIELD3" Caption="欄位三" />
+3. PopupControl（顯示全文用）
 
-                            <dx:GridViewCommandColumn ShowEditButton="False" ShowDeleteButton="False">
-                                <CustomButtons>
-                                    <dx:GridViewCommandColumnCustomButton ID="btnAddRow" Text="新增"
-                                        Visibility="Invisible" />
-                                </CustomButtons>
-                            </dx:GridViewCommandColumn>
-                        </Columns>
-                    </dx:ASPxGridView>
-                </dx:PanelContent>
-            </PanelCollection>
-        </dx:ASPxCallbackPanel>
+<dx:ASPxPopupControl ID="popupTextViewer" runat="server" ClientInstanceName="popupTextViewer"
+    PopupHorizontalAlign="WindowCenter"
+    PopupVerticalAlign="WindowCenter"
+    CloseAction="CloseButton"
+    HeaderText="完整內容"
+    Width="400px" Height="200px">
+    <ContentCollection>
+        <dx:PopupControlContentControl>
+            <dx:ASPxMemo ID="memoContent" runat="server" ClientInstanceName="memoContent" ReadOnly="true"
+                Width="100%" Height="100%" />
+        </dx:PopupControlContentControl>
+    </ContentCollection>
+</dx:ASPxPopupControl>
 
-        <!-- 彈出視窗 -->
-        <dx:ASPxPopupControl ID="PopupAdd" runat="server" Width="400px" Height="300px" CloseAction="CloseButton">
-            <ContentCollection>
-                <dx:PopupControlContentControl>
-                    <dx:ASPxTextBox ID="txtField1" runat="server" ReadOnly="True" />
-                    <dx:ASPxTextBox ID="txtField2" runat="server" ReadOnly="True" />
-                    <dx:ASPxTextBox ID="txtField3" runat="server" />
-                    <dx:ASPxButton ID="btnSave" runat="server" Text="儲存" OnClick="btnSave_Click" />
-                </dx:PopupControlContentControl>
-            </ContentCollection>
-        </dx:ASPxPopupControl>
-    </form>
+4. 後端加 onclick 到資料列的某個欄位
 
-    <script>
-        function PerformSearch() {
-            var searchText = document.getElementById('<%= txtSearch.ClientID %>').value;
-            cp.PerformCallback(searchText);
-        }
-
-        function ShowPopup(field1, field2) {
-            document.getElementById('<%= txtField1.ClientID %>').value = field1;
-            document.getElementById('<%= txtField2.ClientID %>').value = field2;
-            PopupAdd.Show();
-        }
-    </script>
-</body>
-</html>
-```
-
----
-
-## **3. Default.aspx.cs（後端邏輯，連接 Oracle）**
-```csharp
-using System;
-using System.Data;
-using System.Web.UI;
-using Oracle.DataAccess.Client;
-using DevExpress.Web;
-
-namespace YourNamespace
+protected void gridView_HtmlRowPrepared(object sender, ASPxGridViewTableRowEventArgs e)
 {
-    public partial class Default : Page
+    if (e.RowType != DevExpress.Web.GridViewRowType.Data)
+        return;
+
+    // 拿出你要處理的欄位（假設是 "Remarks"）
+    var text = e.GetValue("Remarks")?.ToString();
+    if (!string.IsNullOrEmpty(text))
     {
-        private string connString = System.Configuration.ConfigurationManager.ConnectionStrings["OracleDB"].ConnectionString;
-
-        protected void Page_Load(object sender, EventArgs e)
-        {
-            if (!IsPostBack)
-            {
-                BindGrid();
-            }
-        }
-
-        private void BindGrid()
-        {
-            using (OracleConnection conn = new OracleConnection(connString))
-            {
-                conn.Open();
-                string query = "SELECT DISTINCT FIELD1 FROM MY_TABLE ORDER BY FIELD1";
-                using (OracleDataAdapter da = new OracleDataAdapter(query, conn))
-                {
-                    DataTable dt = new DataTable();
-                    da.Fill(dt);
-
-                    GridView1.DataSource = dt;
-                    GridView1.DataBind();
-                }
-            }
-        }
-
-        protected void GridView1_CustomCallback(object sender, ASPxGridViewCustomCallbackEventArgs e)
-        {
-            BindGrid();
-            foreach (GridViewDataRowInfo row in GridView1.Rows)
-            {
-                string field1 = row.GetValue("FIELD1").ToString();
-
-                if (GridView1.FindRowValues("FIELD1", field1) == row.Index)
-                {
-                    row.Cells[3].FindControl("btnAddRow").Visible = true;
-                }
-            }
-        }
-
-        protected void btnSave_Click(object sender, EventArgs e)
-        {
-            using (OracleConnection conn = new OracleConnection(connString))
-            {
-                conn.Open();
-                string query = "INSERT INTO MY_TABLE (FIELD1, FIELD2, FIELD3) VALUES (:FIELD1, :FIELD2, :FIELD3)";
-                using (OracleCommand cmd = new OracleCommand(query, conn))
-                {
-                    cmd.Parameters.Add(":FIELD1", txtField1.Text);
-                    cmd.Parameters.Add(":FIELD2", txtField2.Text);
-                    cmd.Parameters.Add(":FIELD3", txtField3.Text);
-                    cmd.ExecuteNonQuery();
-                }
-            }
-
-            PopupAdd.ShowOnPageLoad = false;
-            BindGrid();
-        }
-
-        protected void CallbackPanel_Callback(object sender, CallbackEventArgsBase e)
-        {
-            BindGrid();
-        }
+        int colIndex = gridView.Columns["Remarks"].VisibleIndex;
+        e.Row.Cells[colIndex].Attributes["onclick"] = $"showTextPopup('{text.Replace("'", "\\'")}')";
+        e.Row.Cells[colIndex].Attributes["style"] = "cursor:pointer";
     }
 }
-```
 
----
+5. JavaScript 顯示彈窗內容
 
-## **實現效果**
-1. **合併相同 `欄位一` 的 `新增` 按鈕**
-   - 例如：
-     ```
-     A  X  Y    [新增]
-     A  X  Z
-     B  P  Q    [新增]
-     B  P  R
-     ```
-   - `A` 只會有一個 `新增` 按鈕，`B` 也只會有一個。
+<script type="text/javascript">
+    function showTextPopup(content) {
+        memoContent.SetText(content);
+        popupTextViewer.Show();
+    }
+</script>
 
-2. **點擊 `新增` 按鈕，彈出視窗**
-   - 預設帶入 `欄位一` & `欄位二` 的值
-   - 使用者輸入 `欄位三` 並儲存
+✅ 效果示意
+	•	表格顯示：
+這是一段非常長的備註資料...
+	•	使用者點進儲存格：
+-> 跳出一個彈窗視窗，內容為：
+這是一段非常長的備註資料完整顯示在這裡
 
-3. **寫入 Oracle**
-   - `INSERT INTO MY_TABLE (FIELD1, FIELD2, FIELD3) VALUES (...)`
-
----
-
-## **總結**
-✅ **合併相同 `欄位一` 的 `新增` 按鈕**  
-✅ **彈出視窗自動填入 `欄位一` 和 `欄位二`**  
-✅ **存入 Oracle 資料庫**
-
-這份完整程式碼可直接運行，若有任何問題，請隨時告訴我！🚀
+要不要我幫你改造成通用版本，讓多個欄位都能這樣點擊跳出彈窗？還是要加「放大」圖示在儲存格右邊？這些都能做到喔！
