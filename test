@@ -1,93 +1,88 @@
-了解！以下是針對 DevExpress `GridViewDataColumn` 設定固定欄寬以及在資料超過欄寬時，讓使用者點擊欄位後跳出小視窗顯示完整資料的範例程式碼。
+了解，你希望在 DevExpress 19.2 (ASPxGridView) 中達成以下效果：
 
-### **ASPX 設定**
-```aspx
-<dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" OnCommandButtonInitialize="ASPxGridView1_CommandButtonInitialize">
-    <SettingsEditing Mode="PopupEditForm" />
-    <Columns>
-        <dx:GridViewDataTextColumn FieldName="Column1" Caption="欄位1" Width="150px">
-            <PropertiesTextEdit DisplayFormatString="{0}" />
-            <HeaderStyle Width="150px" />
-            <CellStyle Wrap="False" />
-        </dx:GridViewDataTextColumn>
-        <dx:GridViewCommandColumn ShowEditButton="True" />
-    </Columns>
+✅ 需求整理：
+	1.	每個 GridViewDataColumn 都要固定欄寬
+	2.	若文字超出欄寬，顯示省略號 ...
+	3.	使用者可以點該儲存格，跳出小視窗顯示完整資料內容（如 Tooltip 或 Modal）
+
+這功能可以這樣設計（以下提供完整解法）：
+
+✅ Step 1：固定欄寬並加上文字省略號
+
+在欄位加上 CellStyle 設定樣式：
+
+<dx:GridViewDataTextColumn FieldName="Remarks" Caption="備註">
+    <CellStyle Wrap="False">
+        <Paddings Padding="5" />
+        <CssClass>ellipsis-cell</CssClass>
+    </CellStyle>
+</dx:GridViewDataTextColumn>
+
+然後在頁面加上這段 CSS：
+
+<style>
+    .ellipsis-cell {
+        max-width: 150px;         /* 固定寬度 */
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        cursor: pointer;
+    }
+</style>
+
+✅ Step 2：點擊儲存格時顯示完整資料（Popup 顯示）
+
+使用 ClientSideEvents.HtmlRowPrepared + JavaScript Modal 顯示資料：
+
+<dx:ASPxGridView ID="gridView" runat="server" ...>
+    <ClientSideEvents HtmlRowPrepared="onRowPrepared" />
 </dx:ASPxGridView>
 
-<!-- 彈出小視窗的模組 -->
-<dx:ASPxPopupControl ID="PopupControl" runat="server">
+<script type="text/javascript">
+    function onRowPrepared(s, e) {
+        if (e.rowType === "D") {
+            // 範例：對 Remarks 欄位綁點擊事件
+            var remarksCell = e.row.cells[s.GetColumnByField("Remarks").index];
+            var text = remarksCell.innerText;
+            remarksCell.title = text; // 預設 tooltip
+            remarksCell.onclick = function () {
+                showTextPopup(text);
+            };
+        }
+    }
+
+    function showTextPopup(content) {
+        alert(content); // 或用你自己的 Modal 控制元件
+    }
+</script>
+
+✅ 額外（使用 DevExpress 的 PopupControl 更美觀）
+
+若你不想用 alert() 而是用 DevExpress 樣式：
+
+<dx:ASPxPopupControl ID="popupTextViewer" runat="server" ClientInstanceName="popupTextViewer"
+    PopupHorizontalAlign="WindowCenter"
+    PopupVerticalAlign="WindowCenter"
+    CloseAction="CloseButton" ShowCloseButton="true"
+    HeaderText="詳細內容" Width="400px" Height="200px">
     <ContentCollection>
         <dx:PopupControlContentControl>
-            <asp:Label ID="PopupLabel" runat="server" Text="資料顯示：" />
+            <dx:ASPxMemo ID="memoContent" runat="server" ClientInstanceName="memoContent" ReadOnly="true" Width="100%" Height="100%" />
         </dx:PopupControlContentControl>
     </ContentCollection>
 </dx:ASPxPopupControl>
-```
 
-### **後端邏輯 (CS 檔案)**
-以下是完整的 C# 程式碼，包含固定欄寬及彈出視窗邏輯：
-
-```csharp
-using System;
-using DevExpress.Web;
-
-namespace YourNamespace
-{
-    public partial class PopupGridEdit : System.Web.UI.Page
-    {
-        protected void Page_Load(object sender, EventArgs e)
-        {
-            if (!IsPostBack)
-            {
-                BindGrid();
-            }
-        }
-
-        private void BindGrid()
-        {
-            // 模擬資料
-            var table = new System.Data.DataTable();
-            table.Columns.Add("ID", typeof(int));
-            table.Columns.Add("Column1", typeof(string));
-            table.Rows.Add(1, "短文字");
-            table.Rows.Add(2, "這是一段超過欄寬的長文字內容，可以顯示在彈出窗中。");
-
-            ASPxGridView1.DataSource = table;
-            ASPxGridView1.DataBind();
-        }
-
-        protected void ASPxGridView1_CommandButtonInitialize(object sender, ASPxGridViewCommandButtonEventArgs e)
-        {
-            if (e.ButtonType == ColumnCommandButtonType.Edit)
-            {
-                e.Visible = true; // 確保編輯按鈕可見
-            }
-        }
-
-        protected void ASPxGridView1_RowCommand(object sender, ASPxGridViewRowCommandEventArgs e)
-        {
-            if (e.CommandArgs.CommandName == "ShowPopup")
-            {
-                int rowIndex = e.VisibleIndex;
-                string fullText = ASPxGridView1.GetRowValues(rowIndex, "Column1").ToString();
-
-                PopupLabel.Text = fullText; // 設定彈窗中的文字
-                PopupControl.ShowOnPageLoad = true; // 顯示彈窗
-            }
-        }
-    }
+function showTextPopup(content) {
+    memoContent.SetText(content);
+    popupTextViewer.Show();
 }
-```
 
-### **功能解釋**
-1. **固定欄寬**：
-   - 使用 `Width="150px"` 和 `CellStyle Wrap="False"` 保證欄位固定寬度且不換行。
+✅ 總結
 
-2. **彈出小視窗**：
-   - 使用 `ASPxPopupControl` 作為彈出視窗。
-   - 透過 `RowCommand` 事件獲取選中欄位的完整資料並顯示在彈窗中。
+你就可以做到：
+	•	欄寬固定
+	•	文字過長時顯示 ...
+	•	點欄位跳出彈窗顯示完整資料（可用 alert 或 DevExpress 的 ASPxPopupControl）
 
-3. **互動邏輯**：
-   - 在資料超過欄寬時，使用者可以點擊欄位的編輯按鈕或其他自訂按鈕觸發彈窗。
-
-如果有其他特定要求或需要進一步調整，隨時告訴我！😊
+如果你有多個欄位都想這樣處理，也可以通用化。
+如果你願意提供你的欄位清單，我可以幫你一次處理全部欄位的彈窗點擊功能。要嗎？
