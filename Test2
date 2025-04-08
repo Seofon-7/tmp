@@ -1,53 +1,77 @@
-了解，你用的是 GridViewDataColumn（也就是 GridViewDataTextColumn 的基底類型），這樣是 沒問題的！剛剛的邏輯依然適用，只要你在 Columns 裡面是用像下面這種結構，就可以：
+這個問題抓得非常準！
 
-<dx:GridViewDataColumn FieldName="Remarks" Caption="備註">
-    <CellStyle CssClass="ellipsis-cell" />
-</dx:GridViewDataColumn>
-<dx:GridViewDataColumn FieldName="Comment" Caption="說明">
-    <CellStyle CssClass="ellipsis-cell" />
-</dx:GridViewDataColumn>
+當你在 DevExpress ASPxGridView 中啟用 儲存格合併（例如 EnableCellMerging="true"）時，合併儲存格會影響 HtmlDataCellPrepared 事件裡 e.Cell 的位置與數量，導致你根據 colIndex 或 FieldName 所加上的點擊事件可能錯位或套用錯欄位。
 
-✅ 修改後的後端程式碼（針對 GridViewDataColumn）
+✅ 解法目標
 
-protected void gridView_HtmlRowPrepared(object sender, ASPxGridViewTableRowEventArgs e)
+讓你即使有 儲存格合併（Cell Merging），也能正確地讓特定欄位（如 Remarks, Comment）在資料列中點擊跳出 popup 顯示完整內容。
+
+✅ 正確做法：僅針對未合併儲存格套用點擊事件
+
+因為被合併的儲存格在 HtmlDataCellPrepared 中 會被跳過，所以我們必須：
+	1.	使用 HtmlDataCellPrepared 確保只在真實存在的 Cell 上套用
+	2.	不再使用 HtmlRowPrepared（那會抓錯 index）
+	3.	檢查 CellValue 不為 null，再加上 onclick 屬性
+
+✅ 改版範例程式碼
+
+GridView 設定
+
+<dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID"
+    EnableCellMerging="true"
+    OnHtmlDataCellPrepared="gridView_HtmlDataCellPrepared">
+    <SettingsBehavior AllowCellMerge="true" />
+    <Columns>
+        <dx:GridViewDataColumn FieldName="GroupName" Caption="群組" />
+        <dx:GridViewDataColumn FieldName="Remarks" Caption="備註">
+            <CellStyle CssClass="ellipsis-cell" />
+        </dx:GridViewDataColumn>
+        <dx:GridViewDataColumn FieldName="Comment" Caption="說明">
+            <CellStyle CssClass="ellipsis-cell" />
+        </dx:GridViewDataColumn>
+    </Columns>
+</dx:ASPxGridView>
+
+後端事件 HtmlDataCellPrepared
+
+protected void gridView_HtmlDataCellPrepared(object sender, ASPxGridViewTableDataCellEventArgs e)
 {
-    if (e.RowType != DevExpress.Web.GridViewRowType.Data)
-        return;
+    string[] clickableFields = { "Remarks", "Comment" };
 
-    // 你想讓哪些欄位點擊顯示全文
-    string[] clickableFields = { "Remarks", "Comment", "Detail" };
-
-    foreach (string field in clickableFields)
+    if (clickableFields.Contains(e.DataColumn.FieldName))
     {
-        var col = gridView.Columns[field] as GridViewDataColumn;
-        if (col == null || !col.Visible) continue;
-
-        object cellValue = e.GetValue(field);
-        if (cellValue == null) continue;
-
-        string value = cellValue.ToString();
+        // 儲存格合併會導致某些列沒有 CellValue，需檢查
+        string value = e.CellValue?.ToString();
         if (!string.IsNullOrEmpty(value))
         {
             string safeText = value.Replace("'", "\\'").Replace(Environment.NewLine, "\\n");
-            int colIndex = col.VisibleIndex;
-
-            e.Row.Cells[colIndex].Attributes["onclick"] = $"showTextPopup('{safeText}')";
-            e.Row.Cells[colIndex].Attributes["style"] = "cursor:pointer";
+            e.Cell.Attributes["onclick"] = $"showTextPopup('{safeText}')";
+            e.Cell.Attributes["style"] = "cursor:pointer";
         }
     }
 }
 
-✅ 搭配這些一起使用（保持不變）
-	1.	ASPxPopupControl 顯示全文
-	2.	JavaScript showTextPopup(content)
-	3.	CSS 設定固定欄寬加省略號（ellipsis-cell）
+這樣做的好處
+	•	只處理真的存在的儲存格
+	•	不管有無合併儲存格都不會錯位
+	•	不再需要 VisibleIndex 或計算 cell 順序
+	•	你可以放心讓第一欄合併、其他欄點擊正常
 
-總結一下
+確保 CSS 加上省略效果
 
-你用的是 GridViewDataColumn 沒有問題，只要在後端透過：
+<style>
+    .ellipsis-cell {
+        max-width: 150px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
 
-var col = gridView.Columns[field] as GridViewDataColumn;
+✅ 如果你還想這樣
+	•	點小圖示而不是整格觸發
+	•	顯示 Tooltip 預覽內容
+	•	頁面加上「複製全文」按鈕
+	•	手機上也能用彈窗看全文
 
-去存取欄位，然後對應到那格 cell 加 onclick 屬性，就能完成你要的功能，而且多欄位也通用。
-
-需要的話我可以幫你加上「右邊放個小 icon 才能點」、「只能在檢視模式可點」等等進階功能。要我幫你做成這樣嗎？
+我也能幫你加上，有需要嗎？
