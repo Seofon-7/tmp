@@ -1,36 +1,34 @@
-好的，我了解您的需求：避免使用 JavaScript 且需要更詳細的程式碼內容。在此，我提供一個完整的範例，使用 ASP.NET 和 C#，實現從 Oracle 資料庫中根據某欄位的值進行查詢並填入另一欄位的功能。此範例適用於 .NET Framework 4.6.2 和 DevExpress 19.2。
+了解！以下是針對 DevExpress `GridViewDataColumn` 設定固定欄寬以及在資料超過欄寬時，讓使用者點擊欄位後跳出小視窗顯示完整資料的範例程式碼。
 
-### **ASPX 檔案**
-以下是 ASPX 的完整設置：
+### **ASPX 設定**
 ```aspx
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="PopupGridEdit.aspx.cs" Inherits="YourNamespace.PopupGridEdit" %>
-<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" OnCommandButtonInitialize="ASPxGridView1_CommandButtonInitialize">
+    <SettingsEditing Mode="PopupEditForm" />
+    <Columns>
+        <dx:GridViewDataTextColumn FieldName="Column1" Caption="欄位1" Width="150px">
+            <PropertiesTextEdit DisplayFormatString="{0}" />
+            <HeaderStyle Width="150px" />
+            <CellStyle Wrap="False" />
+        </dx:GridViewDataTextColumn>
+        <dx:GridViewCommandColumn ShowEditButton="True" />
+    </Columns>
+</dx:ASPxGridView>
 
-<!DOCTYPE html>
-<html>
-<head runat="server">
-    <title>Popup Grid Edit</title>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" OnRowUpdating="ASPxGridView1_RowUpdating">
-            <SettingsEditing Mode="PopupEditForm" />
-            <Columns>
-                <dx:GridViewDataTextColumn FieldName="Column1" Caption="欄位1" />
-                <dx:GridViewDataTextColumn FieldName="Column2" Caption="欄位2" ReadOnly="True" />
-            </Columns>
-        </dx:ASPxGridView>
-    </form>
-</body>
-</html>
+<!-- 彈出小視窗的模組 -->
+<dx:ASPxPopupControl ID="PopupControl" runat="server">
+    <ContentCollection>
+        <dx:PopupControlContentControl>
+            <asp:Label ID="PopupLabel" runat="server" Text="資料顯示：" />
+        </dx:PopupControlContentControl>
+    </ContentCollection>
+</dx:ASPxPopupControl>
 ```
 
-### **CS 檔案**
-以下是實現邏輯的完整 C# 程式碼：
+### **後端邏輯 (CS 檔案)**
+以下是完整的 C# 程式碼，包含固定欄寬及彈出視窗邏輯：
+
 ```csharp
 using System;
-using System.Data;
-using System.Data.OracleClient; // 引用 Oracle 資料庫
 using DevExpress.Web;
 
 namespace YourNamespace
@@ -41,78 +39,55 @@ namespace YourNamespace
         {
             if (!IsPostBack)
             {
-                // 初始化
                 BindGrid();
             }
         }
 
         private void BindGrid()
         {
-            // 模擬資料，您可以根據實際需求進行資料庫查詢來綁定
-            DataTable table = new DataTable();
+            // 模擬資料
+            var table = new System.Data.DataTable();
             table.Columns.Add("ID", typeof(int));
             table.Columns.Add("Column1", typeof(string));
-            table.Columns.Add("Column2", typeof(string));
-            table.Rows.Add(1, "A", "Value1");
-            table.Rows.Add(2, "B", "Value2");
+            table.Rows.Add(1, "短文字");
+            table.Rows.Add(2, "這是一段超過欄寬的長文字內容，可以顯示在彈出窗中。");
+
             ASPxGridView1.DataSource = table;
             ASPxGridView1.DataBind();
         }
 
-        protected void ASPxGridView1_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+        protected void ASPxGridView1_CommandButtonInitialize(object sender, ASPxGridViewCommandButtonEventArgs e)
         {
-            string column1Value = e.NewValues["Column1"].ToString();
-            string column2Value = QueryOracleForValue(column1Value);
-
-            // 更新資料到 GridView
-            e.NewValues["Column2"] = column2Value;
-
-            // 停止自動更新
-            ASPxGridView1.CancelEdit();
-            e.Cancel = true;
-
-            BindGrid();
+            if (e.ButtonType == ColumnCommandButtonType.Edit)
+            {
+                e.Visible = true; // 確保編輯按鈕可見
+            }
         }
 
-        private string QueryOracleForValue(string inputValue)
+        protected void ASPxGridView1_RowCommand(object sender, ASPxGridViewRowCommandEventArgs e)
         {
-            string result = string.Empty;
-
-            // 資料庫連接與查詢
-            string connectionString = "Your Oracle Connection String Here"; // 請填寫您的連接字串
-            using (OracleConnection connection = new OracleConnection(connectionString))
+            if (e.CommandArgs.CommandName == "ShowPopup")
             {
-                connection.Open();
-                string query = "SELECT YourColumn FROM YourTable WHERE ConditionColumn = :InputValue";
-                using (OracleCommand command = new OracleCommand(query, connection))
-                {
-                    command.Parameters.Add(new OracleParameter(":InputValue", inputValue));
-                    using (OracleDataReader reader = command.ExecuteReader())
-                    {
-                        if (reader.Read())
-                        {
-                            result = reader["YourColumn"].ToString();
-                        }
-                    }
-                }
-            }
+                int rowIndex = e.VisibleIndex;
+                string fullText = ASPxGridView1.GetRowValues(rowIndex, "Column1").ToString();
 
-            return result;
+                PopupLabel.Text = fullText; // 設定彈窗中的文字
+                PopupControl.ShowOnPageLoad = true; // 顯示彈窗
+            }
         }
     }
 }
 ```
 
-### 解釋
-1. **ASPX 檔案**：
-   - 使用 `SettingsEditing` 設置了 PopupEditForm 的編輯模式。
-   - 定義了兩個欄位，`Column1` 作為輸入欄位，`Column2` 作為查詢結果的顯示欄位。
+### **功能解釋**
+1. **固定欄寬**：
+   - 使用 `Width="150px"` 和 `CellStyle Wrap="False"` 保證欄位固定寬度且不換行。
 
-2. **C# 檔案**：
-   - 在 `RowUpdating` 事件中執行查詢邏輯。
-   - `QueryOracleForValue` 函式實現根據 `Column1` 的值向 Oracle 資料庫進行查詢並返回結果。
+2. **彈出小視窗**：
+   - 使用 `ASPxPopupControl` 作為彈出視窗。
+   - 透過 `RowCommand` 事件獲取選中欄位的完整資料並顯示在彈窗中。
 
-3. **資料庫查詢**：
-   - 使用 `OracleClient` 進行資料庫連線與查詢。請記得替換連接字串以及 SQL 語句為符合您需求的值。
+3. **互動邏輯**：
+   - 在資料超過欄寬時，使用者可以點擊欄位的編輯按鈕或其他自訂按鈕觸發彈窗。
 
-您可以根據您的實際資料表結構進行調整。如果需要進一步改進或擴展，請隨時告訴我！ 😊
+如果有其他特定要求或需要進一步調整，隨時告訴我！😊
