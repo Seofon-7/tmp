@@ -1,8 +1,7 @@
-了解了！以下是您所需的解決方案，它實現了在 ASP.NET 4.6.2 和 DevExpress 19.2 環境下，透過 Pop-up Edit Form 在填寫完某欄位後，將其值作為參數查詢 Oracle 資料庫，並將查詢結果代入到其他欄位的功能。
-
-以下是 ASPX 和 C# (CS) 檔案的範例內容：
+好的，我了解您的需求：避免使用 JavaScript 且需要更詳細的程式碼內容。在此，我提供一個完整的範例，使用 ASP.NET 和 C#，實現從 Oracle 資料庫中根據某欄位的值進行查詢並填入另一欄位的功能。此範例適用於 .NET Framework 4.6.2 和 DevExpress 19.2。
 
 ### **ASPX 檔案**
+以下是 ASPX 的完整設置：
 ```aspx
 <%@ Page Language="C#" AutoEventWireup="true" CodeBehind="PopupGridEdit.aspx.cs" Inherits="YourNamespace.PopupGridEdit" %>
 <%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
@@ -14,7 +13,7 @@
 </head>
 <body>
     <form id="form1" runat="server">
-        <dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID">
+        <dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" OnRowUpdating="ASPxGridView1_RowUpdating">
             <SettingsEditing Mode="PopupEditForm" />
             <Columns>
                 <dx:GridViewDataTextColumn FieldName="Column1" Caption="欄位1" />
@@ -27,51 +26,93 @@
 ```
 
 ### **CS 檔案**
+以下是實現邏輯的完整 C# 程式碼：
 ```csharp
 using System;
-using System.Data.OracleClient; // 使用 Oracle 資料庫
-using System.Web.UI;
+using System.Data;
+using System.Data.OracleClient; // 引用 Oracle 資料庫
+using DevExpress.Web;
 
 namespace YourNamespace
 {
-    public partial class PopupGridEdit : Page
+    public partial class PopupGridEdit : System.Web.UI.Page
     {
         protected void Page_Load(object sender, EventArgs e)
         {
-            // 初始化設定
-        }
-
-        protected void ASPxGridView1_CellEditorInitialize(object sender, DevExpress.Web.ASPxGridViewEditorEventArgs e)
-        {
-            if (e.Column.FieldName == "Column1")
+            if (!IsPostBack)
             {
-                e.Editor.ClientSideEvents.ValueChanged = "function(s, e) { SearchAndPopulate(s); }";
+                // 初始化
+                BindGrid();
             }
+        }
+
+        private void BindGrid()
+        {
+            // 模擬資料，您可以根據實際需求進行資料庫查詢來綁定
+            DataTable table = new DataTable();
+            table.Columns.Add("ID", typeof(int));
+            table.Columns.Add("Column1", typeof(string));
+            table.Columns.Add("Column2", typeof(string));
+            table.Rows.Add(1, "A", "Value1");
+            table.Rows.Add(2, "B", "Value2");
+            ASPxGridView1.DataSource = table;
+            ASPxGridView1.DataBind();
+        }
+
+        protected void ASPxGridView1_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+        {
+            string column1Value = e.NewValues["Column1"].ToString();
+            string column2Value = QueryOracleForValue(column1Value);
+
+            // 更新資料到 GridView
+            e.NewValues["Column2"] = column2Value;
+
+            // 停止自動更新
+            ASPxGridView1.CancelEdit();
+            e.Cancel = true;
+
+            BindGrid();
+        }
+
+        private string QueryOracleForValue(string inputValue)
+        {
+            string result = string.Empty;
+
+            // 資料庫連接與查詢
+            string connectionString = "Your Oracle Connection String Here"; // 請填寫您的連接字串
+            using (OracleConnection connection = new OracleConnection(connectionString))
+            {
+                connection.Open();
+                string query = "SELECT YourColumn FROM YourTable WHERE ConditionColumn = :InputValue";
+                using (OracleCommand command = new OracleCommand(query, connection))
+                {
+                    command.Parameters.Add(new OracleParameter(":InputValue", inputValue));
+                    using (OracleDataReader reader = command.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            result = reader["YourColumn"].ToString();
+                        }
+                    }
+                }
+            }
+
+            return result;
         }
     }
 }
 ```
 
-### JavaScript 代碼
-```javascript
-function SearchAndPopulate(editor) {
-    var value = editor.GetValue();
-    if (value) {
-        // 呼叫後端查詢對應資料
-        $.ajax({
-            type: "POST",
-            url: "YourHandler.ashx", // 在後台處理查詢
-            data: { input: value },
-            success: function (result) {
-                // 將結果代入到 Column2
-                var grid = ASPxClientGridView.Cast('ASPxGridView1');
-                grid.GetEditor('Column2').SetValue(result);
-            }
-        });
-    }
-}
-```
+### 解釋
+1. **ASPX 檔案**：
+   - 使用 `SettingsEditing` 設置了 PopupEditForm 的編輯模式。
+   - 定義了兩個欄位，`Column1` 作為輸入欄位，`Column2` 作為查詢結果的顯示欄位。
 
-這裡展示的是基本結構與邏輯，您需要根據實際需求補充具體資料庫連線、查詢語句及前後端交互內容。
+2. **C# 檔案**：
+   - 在 `RowUpdating` 事件中執行查詢邏輯。
+   - `QueryOracleForValue` 函式實現根據 `Column1` 的值向 Oracle 資料庫進行查詢並返回結果。
 
-如果您有其他需求或遇到問題，可以隨時告訴我！ 😊
+3. **資料庫查詢**：
+   - 使用 `OracleClient` 進行資料庫連線與查詢。請記得替換連接字串以及 SQL 語句為符合您需求的值。
+
+您可以根據您的實際資料表結構進行調整。如果需要進一步改進或擴展，請隨時告訴我！ 😊
