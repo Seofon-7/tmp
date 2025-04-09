@@ -1,66 +1,63 @@
-在 .NET Framework 4.7.2（通常是 Web Forms）中，如果你想要將目前網頁的內容包裝進一個 Tab 控制元件 中，並新增另一個空的 Tab 來做其他事情，可以考慮以下幾件事：
+很好的問題——是的，如果只是單純使用 DevExpress 的 AllowCellMerge="True"，那麼只要 pr_sum 欄位的值相同，不管它來自哪一組（chp + layer），都會合併在一起，這不是你要的結果。
 
-一、使用 Tab 控制元件
+你的需求是這樣的：
 
-你可以使用像是 ASP.NET AJAX 的 TabContainer 或第三方元件（像 DevExpress、Telerik、Bootstrap Tabs）來實作。
+你希望：
+	•	只有在 chp 和 layer 都相同的資料列，才合併 pr_sum 欄位
+	•	即使 pr_sum 數值一樣，只要 chp 或 layer 不同，也不能合併
 
-以下是一個使用 ASP.NET AJAX TabContainer 的範例（假設你使用的是 ScriptManager + ToolkitScriptManager）：
+解法：使用 ASPxGridView 的 CellMerge 事件來自訂合併邏輯
 
-<asp:ScriptManager ID="ScriptManager1" runat="server" />
+你可以在後端寫 CellMerge 事件，手動判斷是否允許合併某兩列的 pr_sum 欄位。
 
-<ajaxToolkit:TabContainer ID="TabContainer1" runat="server" ActiveTabIndex="0">
-    <!-- 原有內容搬進這裡 -->
-    <ajaxToolkit:TabPanel ID="TabPanel1" runat="server" HeaderText="原有內容">
-        <ContentTemplate>
-            <!-- 把原本網頁的內容剪下貼到這裡 -->
-            <asp:UpdatePanel runat="server">
-                <ContentTemplate>
-                    <form id="form1" runat="server"> 
-                        <!-- 注意：Web Forms 頁面只能有一個 <form runat="server"> -->
-                        <!-- 所以不要把 form 包進來，而是把裡面的內容放進這裡 -->
-                        <!-- 原本 form1 裡的內容移到這裡 -->
-                    </form>
-                </ContentTemplate>
-            </asp:UpdatePanel>
-        </ContentTemplate>
-    </ajaxToolkit:TabPanel>
+步驟如下：
 
-    <!-- 新增的空白 Tab -->
-    <ajaxToolkit:TabPanel ID="TabPanel2" runat="server" HeaderText="新增功能">
-        <ContentTemplate>
-            <!-- 這裡可以放你要加的新功能 -->
-            <asp:Label ID="Label1" runat="server" Text="這裡是新增的功能區塊"></asp:Label>
-        </ContentTemplate>
-    </ajaxToolkit:TabPanel>
-</ajaxToolkit:TabContainer>
+1. 啟用合併功能：
 
-二、注意事項：form tag 問題
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False"
+    EnableRowsCache="False" KeyFieldName="ID" OnCellMerge="ASPxGridView1_CellMerge">
+    <SettingsBehavior AllowCellMerge="True" />
+    <Columns>
+        <dx:GridViewDataTextColumn FieldName="chp" Caption="CHP" />
+        <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer" />
+        <dx:GridViewDataTextColumn FieldName="pr" Caption="PR" />
+        <dx:GridViewDataTextColumn FieldName="pr_sum" Caption="PR Sum">
+            <Settings AllowCellMerge="True" />
+        </dx:GridViewDataTextColumn>
+    </Columns>
+</dx:ASPxGridView>
 
-ASP.NET Web Forms 頁面只能有一個 <form runat="server">，所以你要：
-	•	不要把原本整個 <form> 包進 TabPanel 裡面
-	•	而是將 <form runat="server"> 裡的內容取出放進 TabPanel.ContentTemplate 中
+2. 在後端處理 CellMerge 事件：
 
-三、如果你使用的是 DevExpress
+protected void ASPxGridView1_CellMerge(object sender, DevExpress.Web.ASPxGridViewTableCellMergeEventArgs e)
+{
+    if (e.Column.FieldName == "pr_sum")
+    {
+        // 拿出目前兩列的資料列物件
+        var val1 = e.RowValues[0];
+        var val2 = e.RowValues[1];
 
-你可以用 DevExpress 的 ASPxPageControl 來建立 Tab：
+        // 檢查 chp 和 layer 是否都相同
+        var chp1 = DataBinder.Eval(val1, "chp")?.ToString();
+        var chp2 = DataBinder.Eval(val2, "chp")?.ToString();
 
-<dx:ASPxPageControl ID="TabControl1" runat="server">
-    <TabPages>
-        <dx:TabPage Text="原有內容">
-            <ContentCollection>
-                <dx:ContentControl>
-                    <!-- 放你原來 form 裡的內容 -->
-                </dx:ContentControl>
-            </ContentCollection>
-        </dx:TabPage>
-        <dx:TabPage Text="新增功能">
-            <ContentCollection>
-                <dx:ContentControl>
-                    <!-- 新功能放這裡 -->
-                </dx:ContentControl>
-            </ContentCollection>
-        </dx:TabPage>
-    </TabPages>
-</dx:ASPxPageControl>
+        var layer1 = DataBinder.Eval(val1, "layer")?.ToString();
+        var layer2 = DataBinder.Eval(val2, "layer")?.ToString();
 
-如果你有用哪一個 UI 套件（Bootstrap、DevExpress、AJAX Control Toolkit 等），可以跟我說，我幫你用對應的語法補完整一點。你也可以貼出你目前的 HTML 結構，我幫你整理搬到 tab 裡。
+        // 如果 chp 或 layer 不同，就不允許合併
+        if (chp1 != chp2 || layer1 != layer2)
+        {
+            e.Handled = true; // 阻止合併
+        }
+    }
+}
+
+這樣就能保證：
+	•	只有相同 chp + layer 的列，pr_sum 才會被合併
+	•	即使其他不同組的 pr_sum 數值一樣，也不會合併
+
+小補充
+	•	e.Handled = true 表示你不讓系統自動合併。
+	•	如果你想要加總的欄位顯示為小數點、格式化，也可以在 ASPxGridView 中用 PropertiesTextEdit-DisplayFormatString 去調整。
+
+如果你願意貼你目前的資料結構（class 或 SQL）和 GridView 宣告，我可以幫你整理成完整範例。你要不要這樣做？
