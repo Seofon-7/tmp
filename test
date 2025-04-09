@@ -1,64 +1,101 @@
-太好了，你現在想更進一步地比較 chp、layer 和 op_no 三個欄位來判斷是否合併 pr_sum，並且你希望改用 DevExpress 提供的新版事件 CustomCellMerge（ASPxGridView.CustomCellMerge，使用 ASPxGridViewCustomCellMergeEventArgs）。
+你想要的是：當使用者在 ASPxComboBox（位於 GridViewToolbarItem.Template 裡）選擇不同的值時，即時觸發事件來重新篩選 ASPxGridView 的資料。
 
-一、你要的合併邏輯：
-	•	只有當 chp, layer, op_no 都相同時，才允許合併 pr_sum
-	•	即使 pr_sum 的值一樣，只要這三個欄位有任何不同，也 不能合併
+這在 DevExpress 19.2 + .NET 4.7.2 是可以做到的。下面是完整步驟和範例：
 
-二、實作步驟（使用 CustomCellMerge）
+一、整體邏輯
+	1.	你在 GridView 的 Toolbar 裡放一個 ComboBox。
+	2.	當 ComboBox 選取變更 (SelectedIndexChanged)，透過 Callback 或 PostBack 更新 GridView 的資料來源。
+	3.	根據 ComboBox 的值，在 GridView 的 DataSource 中進行篩選。
 
-1. GridView 設定：
+二、範例：GridView Toolbar + ComboBox 篩選
+
+1. ASPX - GridView + Toolbar ComboBox
 
 <dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False"
-    KeyFieldName="ID"
-    OnCustomCellMerge="ASPxGridView1_CustomCellMerge">
-    <SettingsBehavior AllowCellMerge="True" />
+    OnDataBinding="ASPxGridView1_DataBinding">
+    <Toolbars>
+        <dx:GridViewToolbar>
+            <Items>
+                <dx:GridViewToolbarItem>
+                    <Template>
+                        <dx:ASPxComboBox ID="ddlFilter" runat="server"
+                            AutoPostBack="true"
+                            OnSelectedIndexChanged="ddlFilter_SelectedIndexChanged">
+                            <Items>
+                                <dx:ListEditItem Text="All" Value="" />
+                                <dx:ListEditItem Text="CHP A" Value="A" />
+                                <dx:ListEditItem Text="CHP B" Value="B" />
+                            </Items>
+                        </dx:ASPxComboBox>
+                    </Template>
+                </dx:GridViewToolbarItem>
+            </Items>
+        </dx:GridViewToolbar>
+    </Toolbars>
     <Columns>
         <dx:GridViewDataTextColumn FieldName="chp" Caption="CHP" />
         <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer" />
-        <dx:GridViewDataTextColumn FieldName="op_no" Caption="OP No" />
         <dx:GridViewDataTextColumn FieldName="pr" Caption="PR" />
-        <dx:GridViewDataTextColumn FieldName="pr_sum" Caption="PR Sum">
-            <Settings AllowCellMerge="True" />
-        </dx:GridViewDataTextColumn>
     </Columns>
 </dx:ASPxGridView>
 
-2. 後端處理 CustomCellMerge：
+2. 後端 Code-behind (C#)
 
-protected void ASPxGridView1_CustomCellMerge(object sender, ASPxGridViewCustomCellMergeEventArgs e)
+// 儲存 ComboBox 選項
+protected string SelectedCHP
 {
-    if (e.Column.FieldName == "pr_sum")
-    {
-        string chp1 = e.RowValues1["chp"]?.ToString();
-        string chp2 = e.RowValues2["chp"]?.ToString();
-
-        string layer1 = e.RowValues1["layer"]?.ToString();
-        string layer2 = e.RowValues2["layer"]?.ToString();
-
-        string opno1 = e.RowValues1["op_no"]?.ToString();
-        string opno2 = e.RowValues2["op_no"]?.ToString();
-
-        // 比較條件：只要有任一個欄位不同，就不要合併
-        if (chp1 != chp2 || layer1 != layer2 || opno1 != opno2)
-        {
-            e.Handled = true;   // 阻止合併
-            e.Merge = false;
-        }
-        else
-        {
-            e.Handled = true;   // 允許合併
-            e.Merge = true;
-        }
-    }
+    get { return Session["SelectedCHP"]?.ToString() ?? ""; }
+    set { Session["SelectedCHP"] = value; }
 }
 
-三、為什麼選 CustomCellMerge 而不是 CellMerge？
-	•	CustomCellMerge 是 DevExpress 後期提供的新事件，給你 更細粒度控制
-	•	e.RowValues1 / e.RowValues2 提供了兩筆資料列的欄位內容，不用自己轉型
-	•	可直接設定 e.Merge = true/false，比 CellMerge 更直觀
+// 資料綁定事件
+protected void ASPxGridView1_DataBinding(object sender, EventArgs e)
+{
+    var grid = sender as ASPxGridView;
 
-四、常見小提醒
-	•	確保你的 GridView 的 DataSource 裡面有 chp, layer, op_no, pr, pr_sum
-	•	如果用 DataTable 當來源，也要記得欄位名稱一致（區分大小寫）
+    // 模擬資料來源
+    var data = GetSampleData();
 
-如果你有實際資料或想確認顯示效果，我也可以幫你做一個完整的資料來源範例（像是從 List<T> 綁定）。需要嗎？
+    // 根據 ComboBox 選擇篩選
+    if (!string.IsNullOrEmpty(SelectedCHP))
+    {
+        data = data.Where(x => x.chp == SelectedCHP).ToList();
+    }
+
+    grid.DataSource = data;
+}
+
+// ComboBox 選項改變
+protected void ddlFilter_SelectedIndexChanged(object sender, EventArgs e)
+{
+    var ddl = sender as ASPxComboBox;
+    SelectedCHP = ddl.Value?.ToString();
+
+    ASPxGridView1.DataBind(); // 重新綁定 Grid
+}
+
+3. 模擬資料方法（可放在後端）
+
+private List<MyItem> GetSampleData()
+{
+    return new List<MyItem>
+    {
+        new MyItem { chp = "A", layer = "L1", pr = 10 },
+        new MyItem { chp = "A", layer = "L2", pr = 20 },
+        new MyItem { chp = "B", layer = "L1", pr = 30 },
+        new MyItem { chp = "B", layer = "L2", pr = 40 },
+    };
+}
+
+public class MyItem
+{
+    public string chp { get; set; }
+    public string layer { get; set; }
+    public int pr { get; set; }
+}
+
+三、補充
+	•	如果你不想用 Session，也可以用 ViewState 或傳值機制儲存選項。
+	•	若你希望是 AJAX 無刷新更新，也可以用 ASPxCallbackPanel 或 grid.PerformCallback()，我也可以幫你改成這種方式。
+
+要不要我幫你改成用 CallbackPanel 或 Client-Side JavaScript 的版本？這樣會更流暢、不用重新載入整個頁面。
