@@ -1,25 +1,21 @@
-很好的問題——是的，如果只是單純使用 DevExpress 的 AllowCellMerge="True"，那麼只要 pr_sum 欄位的值相同，不管它來自哪一組（chp + layer），都會合併在一起，這不是你要的結果。
+太好了，你現在想更進一步地比較 chp、layer 和 op_no 三個欄位來判斷是否合併 pr_sum，並且你希望改用 DevExpress 提供的新版事件 CustomCellMerge（ASPxGridView.CustomCellMerge，使用 ASPxGridViewCustomCellMergeEventArgs）。
 
-你的需求是這樣的：
+一、你要的合併邏輯：
+	•	只有當 chp, layer, op_no 都相同時，才允許合併 pr_sum
+	•	即使 pr_sum 的值一樣，只要這三個欄位有任何不同，也 不能合併
 
-你希望：
-	•	只有在 chp 和 layer 都相同的資料列，才合併 pr_sum 欄位
-	•	即使 pr_sum 數值一樣，只要 chp 或 layer 不同，也不能合併
+二、實作步驟（使用 CustomCellMerge）
 
-解法：使用 ASPxGridView 的 CellMerge 事件來自訂合併邏輯
-
-你可以在後端寫 CellMerge 事件，手動判斷是否允許合併某兩列的 pr_sum 欄位。
-
-步驟如下：
-
-1. 啟用合併功能：
+1. GridView 設定：
 
 <dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False"
-    EnableRowsCache="False" KeyFieldName="ID" OnCellMerge="ASPxGridView1_CellMerge">
+    KeyFieldName="ID"
+    OnCustomCellMerge="ASPxGridView1_CustomCellMerge">
     <SettingsBehavior AllowCellMerge="True" />
     <Columns>
         <dx:GridViewDataTextColumn FieldName="chp" Caption="CHP" />
         <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer" />
+        <dx:GridViewDataTextColumn FieldName="op_no" Caption="OP No" />
         <dx:GridViewDataTextColumn FieldName="pr" Caption="PR" />
         <dx:GridViewDataTextColumn FieldName="pr_sum" Caption="PR Sum">
             <Settings AllowCellMerge="True" />
@@ -27,37 +23,42 @@
     </Columns>
 </dx:ASPxGridView>
 
-2. 在後端處理 CellMerge 事件：
+2. 後端處理 CustomCellMerge：
 
-protected void ASPxGridView1_CellMerge(object sender, DevExpress.Web.ASPxGridViewTableCellMergeEventArgs e)
+protected void ASPxGridView1_CustomCellMerge(object sender, ASPxGridViewCustomCellMergeEventArgs e)
 {
     if (e.Column.FieldName == "pr_sum")
     {
-        // 拿出目前兩列的資料列物件
-        var val1 = e.RowValues[0];
-        var val2 = e.RowValues[1];
+        string chp1 = e.RowValues1["chp"]?.ToString();
+        string chp2 = e.RowValues2["chp"]?.ToString();
 
-        // 檢查 chp 和 layer 是否都相同
-        var chp1 = DataBinder.Eval(val1, "chp")?.ToString();
-        var chp2 = DataBinder.Eval(val2, "chp")?.ToString();
+        string layer1 = e.RowValues1["layer"]?.ToString();
+        string layer2 = e.RowValues2["layer"]?.ToString();
 
-        var layer1 = DataBinder.Eval(val1, "layer")?.ToString();
-        var layer2 = DataBinder.Eval(val2, "layer")?.ToString();
+        string opno1 = e.RowValues1["op_no"]?.ToString();
+        string opno2 = e.RowValues2["op_no"]?.ToString();
 
-        // 如果 chp 或 layer 不同，就不允許合併
-        if (chp1 != chp2 || layer1 != layer2)
+        // 比較條件：只要有任一個欄位不同，就不要合併
+        if (chp1 != chp2 || layer1 != layer2 || opno1 != opno2)
         {
-            e.Handled = true; // 阻止合併
+            e.Handled = true;   // 阻止合併
+            e.Merge = false;
+        }
+        else
+        {
+            e.Handled = true;   // 允許合併
+            e.Merge = true;
         }
     }
 }
 
-這樣就能保證：
-	•	只有相同 chp + layer 的列，pr_sum 才會被合併
-	•	即使其他不同組的 pr_sum 數值一樣，也不會合併
+三、為什麼選 CustomCellMerge 而不是 CellMerge？
+	•	CustomCellMerge 是 DevExpress 後期提供的新事件，給你 更細粒度控制
+	•	e.RowValues1 / e.RowValues2 提供了兩筆資料列的欄位內容，不用自己轉型
+	•	可直接設定 e.Merge = true/false，比 CellMerge 更直觀
 
-小補充
-	•	e.Handled = true 表示你不讓系統自動合併。
-	•	如果你想要加總的欄位顯示為小數點、格式化，也可以在 ASPxGridView 中用 PropertiesTextEdit-DisplayFormatString 去調整。
+四、常見小提醒
+	•	確保你的 GridView 的 DataSource 裡面有 chp, layer, op_no, pr, pr_sum
+	•	如果用 DataTable 當來源，也要記得欄位名稱一致（區分大小寫）
 
-如果你願意貼你目前的資料結構（class 或 SQL）和 GridView 宣告，我可以幫你整理成完整範例。你要不要這樣做？
+如果你有實際資料或想確認顯示效果，我也可以幫你做一個完整的資料來源範例（像是從 List<T> 綁定）。需要嗎？
