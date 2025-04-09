@@ -1,88 +1,66 @@
-了解，你希望在 DevExpress 19.2 (ASPxGridView) 中達成以下效果：
+在 .NET Framework 4.7.2（通常是 Web Forms）中，如果你想要將目前網頁的內容包裝進一個 Tab 控制元件 中，並新增另一個空的 Tab 來做其他事情，可以考慮以下幾件事：
 
-✅ 需求整理：
-	1.	每個 GridViewDataColumn 都要固定欄寬
-	2.	若文字超出欄寬，顯示省略號 ...
-	3.	使用者可以點該儲存格，跳出小視窗顯示完整資料內容（如 Tooltip 或 Modal）
+一、使用 Tab 控制元件
 
-這功能可以這樣設計（以下提供完整解法）：
+你可以使用像是 ASP.NET AJAX 的 TabContainer 或第三方元件（像 DevExpress、Telerik、Bootstrap Tabs）來實作。
 
-✅ Step 1：固定欄寬並加上文字省略號
+以下是一個使用 ASP.NET AJAX TabContainer 的範例（假設你使用的是 ScriptManager + ToolkitScriptManager）：
 
-在欄位加上 CellStyle 設定樣式：
+<asp:ScriptManager ID="ScriptManager1" runat="server" />
 
-<dx:GridViewDataTextColumn FieldName="Remarks" Caption="備註">
-    <CellStyle Wrap="False">
-        <Paddings Padding="5" />
-        <CssClass>ellipsis-cell</CssClass>
-    </CellStyle>
-</dx:GridViewDataTextColumn>
+<ajaxToolkit:TabContainer ID="TabContainer1" runat="server" ActiveTabIndex="0">
+    <!-- 原有內容搬進這裡 -->
+    <ajaxToolkit:TabPanel ID="TabPanel1" runat="server" HeaderText="原有內容">
+        <ContentTemplate>
+            <!-- 把原本網頁的內容剪下貼到這裡 -->
+            <asp:UpdatePanel runat="server">
+                <ContentTemplate>
+                    <form id="form1" runat="server"> 
+                        <!-- 注意：Web Forms 頁面只能有一個 <form runat="server"> -->
+                        <!-- 所以不要把 form 包進來，而是把裡面的內容放進這裡 -->
+                        <!-- 原本 form1 裡的內容移到這裡 -->
+                    </form>
+                </ContentTemplate>
+            </asp:UpdatePanel>
+        </ContentTemplate>
+    </ajaxToolkit:TabPanel>
 
-然後在頁面加上這段 CSS：
+    <!-- 新增的空白 Tab -->
+    <ajaxToolkit:TabPanel ID="TabPanel2" runat="server" HeaderText="新增功能">
+        <ContentTemplate>
+            <!-- 這裡可以放你要加的新功能 -->
+            <asp:Label ID="Label1" runat="server" Text="這裡是新增的功能區塊"></asp:Label>
+        </ContentTemplate>
+    </ajaxToolkit:TabPanel>
+</ajaxToolkit:TabContainer>
 
-<style>
-    .ellipsis-cell {
-        max-width: 150px;         /* 固定寬度 */
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        cursor: pointer;
-    }
-</style>
+二、注意事項：form tag 問題
 
-✅ Step 2：點擊儲存格時顯示完整資料（Popup 顯示）
+ASP.NET Web Forms 頁面只能有一個 <form runat="server">，所以你要：
+	•	不要把原本整個 <form> 包進 TabPanel 裡面
+	•	而是將 <form runat="server"> 裡的內容取出放進 TabPanel.ContentTemplate 中
 
-使用 ClientSideEvents.HtmlRowPrepared + JavaScript Modal 顯示資料：
+三、如果你使用的是 DevExpress
 
-<dx:ASPxGridView ID="gridView" runat="server" ...>
-    <ClientSideEvents HtmlRowPrepared="onRowPrepared" />
-</dx:ASPxGridView>
+你可以用 DevExpress 的 ASPxPageControl 來建立 Tab：
 
-<script type="text/javascript">
-    function onRowPrepared(s, e) {
-        if (e.rowType === "D") {
-            // 範例：對 Remarks 欄位綁點擊事件
-            var remarksCell = e.row.cells[s.GetColumnByField("Remarks").index];
-            var text = remarksCell.innerText;
-            remarksCell.title = text; // 預設 tooltip
-            remarksCell.onclick = function () {
-                showTextPopup(text);
-            };
-        }
-    }
+<dx:ASPxPageControl ID="TabControl1" runat="server">
+    <TabPages>
+        <dx:TabPage Text="原有內容">
+            <ContentCollection>
+                <dx:ContentControl>
+                    <!-- 放你原來 form 裡的內容 -->
+                </dx:ContentControl>
+            </ContentCollection>
+        </dx:TabPage>
+        <dx:TabPage Text="新增功能">
+            <ContentCollection>
+                <dx:ContentControl>
+                    <!-- 新功能放這裡 -->
+                </dx:ContentControl>
+            </ContentCollection>
+        </dx:TabPage>
+    </TabPages>
+</dx:ASPxPageControl>
 
-    function showTextPopup(content) {
-        alert(content); // 或用你自己的 Modal 控制元件
-    }
-</script>
-
-✅ 額外（使用 DevExpress 的 PopupControl 更美觀）
-
-若你不想用 alert() 而是用 DevExpress 樣式：
-
-<dx:ASPxPopupControl ID="popupTextViewer" runat="server" ClientInstanceName="popupTextViewer"
-    PopupHorizontalAlign="WindowCenter"
-    PopupVerticalAlign="WindowCenter"
-    CloseAction="CloseButton" ShowCloseButton="true"
-    HeaderText="詳細內容" Width="400px" Height="200px">
-    <ContentCollection>
-        <dx:PopupControlContentControl>
-            <dx:ASPxMemo ID="memoContent" runat="server" ClientInstanceName="memoContent" ReadOnly="true" Width="100%" Height="100%" />
-        </dx:PopupControlContentControl>
-    </ContentCollection>
-</dx:ASPxPopupControl>
-
-function showTextPopup(content) {
-    memoContent.SetText(content);
-    popupTextViewer.Show();
-}
-
-✅ 總結
-
-你就可以做到：
-	•	欄寬固定
-	•	文字過長時顯示 ...
-	•	點欄位跳出彈窗顯示完整資料（可用 alert 或 DevExpress 的 ASPxPopupControl）
-
-如果你有多個欄位都想這樣處理，也可以通用化。
-如果你願意提供你的欄位清單，我可以幫你一次處理全部欄位的彈窗點擊功能。要嗎？
+如果你有用哪一個 UI 套件（Bootstrap、DevExpress、AJAX Control Toolkit 等），可以跟我說，我幫你用對應的語法補完整一點。你也可以貼出你目前的 HTML 結構，我幫你整理搬到 tab 裡。
