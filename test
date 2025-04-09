@@ -1,101 +1,145 @@
-你想要的是：當使用者在 ASPxComboBox（位於 GridViewToolbarItem.Template 裡）選擇不同的值時，即時觸發事件來重新篩選 ASPxGridView 的資料。
+好的，以下是一個簡化的 DevExpress ASPxGridView 專案樣板，符合你需求的基本流程：
 
-這在 DevExpress 19.2 + .NET 4.7.2 是可以做到的。下面是完整步驟和範例：
+範例說明
+	•	使用 DevExpress 19.2 + .NET Framework 4.7.2 WebForms。
+	•	GridView 允許「行內新增 / 編輯」。
+	•	當你在新增列選擇 chpgrp（下拉選單）後：
+	•	到 Oracle 撈資料（此範例用模擬）。
+	•	自動加上多筆符合條件的行。
 
-一、整體邏輯
-	1.	你在 GridView 的 Toolbar 裡放一個 ComboBox。
-	2.	當 ComboBox 選取變更 (SelectedIndexChanged)，透過 Callback 或 PostBack 更新 GridView 的資料來源。
-	3.	根據 ComboBox 的值，在 GridView 的 DataSource 中進行篩選。
+1. ASPX 頁面範例
 
-二、範例：GridView Toolbar + ComboBox 篩選
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="DynamicInsert.aspx.cs" Inherits="YourNamespace.DynamicInsert" %>
+<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
 
-1. ASPX - GridView + Toolbar ComboBox
+<!DOCTYPE html>
+<html>
+<head runat="server">
+    <title>Dynamic Row Insert</title>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <dx:ASPxGridView ID="grid" runat="server" KeyFieldName="Id"
+            AutoGenerateColumns="False"
+            OnNeedDataSource="grid_NeedDataSource"
+            OnRowInserting="grid_RowInserting"
+            OnCellEditorInitialize="grid_CellEditorInitialize">
+            
+            <SettingsEditing Mode="Inline" NewItemRowPosition="Top" />
+            <SettingsBehavior AllowFocusedRow="true" />
+            <SettingsCommandButton>
+                <NewButton Text="新增" />
+            </SettingsCommandButton>
+            
+            <Columns>
+                <dx:GridViewCommandColumn ShowNewButtonInHeader="true" ShowEditButton="true" ShowDeleteButton="true" />
+                
+                <dx:GridViewDataComboBoxColumn FieldName="chpgrp" Caption="CHPGRP">
+                    <PropertiesComboBox EnableCallbackMode="false"
+                                        DropDownStyle="DropDown"
+                                        AutoPostBack="true"
+                                        OnSelectedIndexChanged="comboChpgrp_SelectedIndexChanged">
+                    </PropertiesComboBox>
+                </dx:GridViewDataComboBoxColumn>
 
-<dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False"
-    OnDataBinding="ASPxGridView1_DataBinding">
-    <Toolbars>
-        <dx:GridViewToolbar>
-            <Items>
-                <dx:GridViewToolbarItem>
-                    <Template>
-                        <dx:ASPxComboBox ID="ddlFilter" runat="server"
-                            AutoPostBack="true"
-                            OnSelectedIndexChanged="ddlFilter_SelectedIndexChanged">
-                            <Items>
-                                <dx:ListEditItem Text="All" Value="" />
-                                <dx:ListEditItem Text="CHP A" Value="A" />
-                                <dx:ListEditItem Text="CHP B" Value="B" />
-                            </Items>
-                        </dx:ASPxComboBox>
-                    </Template>
-                </dx:GridViewToolbarItem>
-            </Items>
-        </dx:GridViewToolbar>
-    </Toolbars>
-    <Columns>
-        <dx:GridViewDataTextColumn FieldName="chp" Caption="CHP" />
-        <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer" />
-        <dx:GridViewDataTextColumn FieldName="pr" Caption="PR" />
-    </Columns>
-</dx:ASPxGridView>
+                <dx:GridViewDataTextColumn FieldName="op_no" Caption="OP_NO" />
+                <dx:GridViewDataTextColumn FieldName="remark" Caption="備註" />
+            </Columns>
+        </dx:ASPxGridView>
+    </form>
+</body>
+</html>
 
-2. 後端 Code-behind (C#)
+2. C# 後端程式碼
 
-// 儲存 ComboBox 選項
-protected string SelectedCHP
+public partial class DynamicInsert : System.Web.UI.Page
 {
-    get { return Session["SelectedCHP"]?.ToString() ?? ""; }
-    set { Session["SelectedCHP"] = value; }
-}
-
-// 資料綁定事件
-protected void ASPxGridView1_DataBinding(object sender, EventArgs e)
-{
-    var grid = sender as ASPxGridView;
-
-    // 模擬資料來源
-    var data = GetSampleData();
-
-    // 根據 ComboBox 選擇篩選
-    if (!string.IsNullOrEmpty(SelectedCHP))
+    private class MyRow
     {
-        data = data.Where(x => x.chp == SelectedCHP).ToList();
+        public int Id { get; set; }
+        public string chpgrp { get; set; }
+        public string op_no { get; set; }
+        public string remark { get; set; }
     }
 
-    grid.DataSource = data;
-}
+    private static List<MyRow> dbRows = new List<MyRow>();
+    private static int nextId = 1;
 
-// ComboBox 選項改變
-protected void ddlFilter_SelectedIndexChanged(object sender, EventArgs e)
-{
-    var ddl = sender as ASPxComboBox;
-    SelectedCHP = ddl.Value?.ToString();
-
-    ASPxGridView1.DataBind(); // 重新綁定 Grid
-}
-
-3. 模擬資料方法（可放在後端）
-
-private List<MyItem> GetSampleData()
-{
-    return new List<MyItem>
+    protected void Page_Load(object sender, EventArgs e)
     {
-        new MyItem { chp = "A", layer = "L1", pr = 10 },
-        new MyItem { chp = "A", layer = "L2", pr = 20 },
-        new MyItem { chp = "B", layer = "L1", pr = 30 },
-        new MyItem { chp = "B", layer = "L2", pr = 40 },
-    };
+        if (!IsPostBack && dbRows.Count == 0)
+        {
+            // 模擬資料
+            dbRows.Add(new MyRow { Id = nextId++, chpgrp = "G1", op_no = "10", remark = "Test" });
+        }
+    }
+
+    protected void grid_NeedDataSource(object sender, EventArgs e)
+    {
+        grid.DataSource = dbRows;
+    }
+
+    protected void grid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+    {
+        string chpgrp = e.NewValues["chpgrp"]?.ToString();
+        string remark = e.NewValues["remark"]?.ToString();
+
+        // 模擬 Oracle 查詢該 chpgrp 對應的 3 筆資料
+        var resultFromOracle = GetRowsFromOracle(chpgrp);
+
+        foreach (var item in resultFromOracle)
+        {
+            dbRows.Add(new MyRow
+            {
+                Id = nextId++,
+                chpgrp = chpgrp,
+                op_no = item,
+                remark = remark
+            });
+        }
+
+        e.Cancel = true;
+        grid.CancelEdit();
+        grid.DataBind();
+    }
+
+    protected void comboChpgrp_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        // 可以在這裡即時更新，但實務上不建議用 Server-Side Control PostBack 在 ComboBox 事件中新增行，建議保留目前作法
+    }
+
+    private List<string> GetRowsFromOracle(string chpgrp)
+    {
+        // 你可以在這裡撈 Oracle，例如：
+        // SELECT op_no FROM my_table WHERE chpgrp = :chpgrp;
+        return new List<string> { "100", "200", "300" };
+    }
+
+    protected void grid_CellEditorInitialize(object sender, ASPxGridViewEditorEventArgs e)
+    {
+        if (e.Column.FieldName == "chpgrp" && e.Editor is ASPxComboBox combo)
+        {
+            combo.DataSource = new List<string> { "G1", "G2", "G3" };
+            combo.ValueField = "Value";
+            combo.TextField = "Value";
+            combo.DataBind();
+        }
+    }
 }
 
-public class MyItem
-{
-    public string chp { get; set; }
-    public string layer { get; set; }
-    public int pr { get; set; }
-}
+3. 效果示意
+	1.	點「新增」 → 最上方出現空列。
+	2.	在 chpgrp 選擇 “G2”。
+	3.	輸入其他欄位 → 按下儲存。
+	4.	Grid 將自動加上 3 筆資料列（例：op_no = 100, 200, 300）。
 
-三、補充
-	•	如果你不想用 Session，也可以用 ViewState 或傳值機制儲存選項。
-	•	若你希望是 AJAX 無刷新更新，也可以用 ASPxCallbackPanel 或 grid.PerformCallback()，我也可以幫你改成這種方式。
+你可以自行調整的地方
 
-要不要我幫你改成用 CallbackPanel 或 Client-Side JavaScript 的版本？這樣會更流暢、不用重新載入整個頁面。
+功能	可改動範圍
+資料來源	改為你自己的 Oracle 查詢
+下拉選單來源	可查 DB 或硬編寫
+加上其他欄位	如 user, layer, pr 等
+暫存區	可改用 Session / ViewState
+
+如果你要我幫你套進你現有的專案，我也可以，你只要提供你現有 Grid 的欄位與基本欄位型別即可。
+需要我幫你包成 zip 可匯入的 Visual Studio 專案嗎？還是你要直接改寫你現有的頁面？
