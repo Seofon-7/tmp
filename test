@@ -1,145 +1,136 @@
-好的，以下是一個簡化的 DevExpress ASPxGridView 專案樣板，符合你需求的基本流程：
+了解您的需求，您想在 GridView 中嵌入一個 Lookup 編輯器，其中包含兩個欄位：一個是次數（用戶可以直接輸入），另一個是週/天（用戶可以從下拉選單中選擇）。
 
-範例說明
-	•	使用 DevExpress 19.2 + .NET Framework 4.7.2 WebForms。
-	•	GridView 允許「行內新增 / 編輯」。
-	•	當你在新增列選擇 chpgrp（下拉選單）後：
-	•	到 Oracle 撈資料（此範例用模擬）。
-	•	自動加上多筆符合條件的行。
+我將為您提供一個完整的解決方案：
 
-1. ASPX 頁面範例
+1. 首先在 GridView 中添加使用自定義模板的列
+2. 在模板中實現包含兩個輸入控件的 ASPxGridLookup
 
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="DynamicInsert.aspx.cs" Inherits="YourNamespace.DynamicInsert" %>
-<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+以下是具體實現代碼：
 
-<!DOCTYPE html>
-<html>
-<head runat="server">
-    <title>Dynamic Row Insert</title>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <dx:ASPxGridView ID="grid" runat="server" KeyFieldName="Id"
-            AutoGenerateColumns="False"
-            OnNeedDataSource="grid_NeedDataSource"
-            OnRowInserting="grid_RowInserting"
-            OnCellEditorInitialize="grid_CellEditorInitialize">
-            
-            <SettingsEditing Mode="Inline" NewItemRowPosition="Top" />
-            <SettingsBehavior AllowFocusedRow="true" />
-            <SettingsCommandButton>
-                <NewButton Text="新增" />
-            </SettingsCommandButton>
-            
-            <Columns>
-                <dx:GridViewCommandColumn ShowNewButtonInHeader="true" ShowEditButton="true" ShowDeleteButton="true" />
-                
-                <dx:GridViewDataComboBoxColumn FieldName="chpgrp" Caption="CHPGRP">
-                    <PropertiesComboBox EnableCallbackMode="false"
-                                        DropDownStyle="DropDown"
-                                        AutoPostBack="true"
-                                        OnSelectedIndexChanged="comboChpgrp_SelectedIndexChanged">
-                    </PropertiesComboBox>
-                </dx:GridViewDataComboBoxColumn>
+```aspx
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" ... >
+    <Columns>
+        <!-- 其他列 -->
+        
+        <dx:GridViewDataColumn FieldName="FrequencyField" Caption="頻率設定">
+            <EditItemTemplate>
+                <dx:ASPxGridLookup ID="FrequencyLookup" runat="server" 
+                    KeyFieldName="ID" 
+                    TextFormatString="{0} 次/{1}" 
+                    ClientInstanceName="frequencyLookup"
+                    Width="100%"
+                    OnInit="FrequencyLookup_Init">
+                    <GridViewProperties>
+                        <SettingsBehavior AllowFocusedRow="True" AllowSelectSingleRowOnly="True" />
+                        <Settings ShowFilterRow="True" />
+                    </GridViewProperties>
+                    <Columns>
+                        <dx:GridViewDataColumn FieldName="ID" Caption="ID" Visible="false" />
+                        <dx:GridViewDataColumn FieldName="Frequency" Caption="次數">
+                            <EditItemTemplate>
+                                <dx:ASPxSpinEdit ID="FrequencyEdit" runat="server" 
+                                    Value='<%# Bind("Frequency") %>'
+                                    MinValue="1" Width="100%">
+                                </dx:ASPxSpinEdit>
+                            </EditItemTemplate>
+                        </dx:GridViewDataColumn>
+                        <dx:GridViewDataColumn FieldName="PeriodType" Caption="週/天">
+                            <EditItemTemplate>
+                                <dx:ASPxComboBox ID="PeriodTypeCombo" runat="server" 
+                                    Value='<%# Bind("PeriodType") %>'
+                                    Width="100%">
+                                    <Items>
+                                        <dx:ListEditItem Text="天" Value="天" />
+                                        <dx:ListEditItem Text="週" Value="週" />
+                                        <dx:ListEditItem Text="月" Value="月" />
+                                    </Items>
+                                </dx:ASPxComboBox>
+                            </EditItemTemplate>
+                        </dx:GridViewDataColumn>
+                    </Columns>
+                    <GridViewStyles>
+                        <Header Paddings-Padding="8px" />
+                        <Cell Paddings-Padding="8px" />
+                    </GridViewStyles>
+                </dx:ASPxGridLookup>
+            </EditItemTemplate>
+        </dx:GridViewDataColumn>
+        
+        <!-- 其他列 -->
+    </Columns>
+</dx:ASPxGridView>
+```
 
-                <dx:GridViewDataTextColumn FieldName="op_no" Caption="OP_NO" />
-                <dx:GridViewDataTextColumn FieldName="remark" Caption="備註" />
-            </Columns>
-        </dx:ASPxGridView>
-    </form>
-</body>
-</html>
+後台代碼：
 
-2. C# 後端程式碼
-
-public partial class DynamicInsert : System.Web.UI.Page
+```csharp
+protected void FrequencyLookup_Init(object sender, EventArgs e)
 {
-    private class MyRow
+    ASPxGridLookup lookup = sender as ASPxGridLookup;
+    if (lookup != null)
     {
-        public int Id { get; set; }
-        public string chpgrp { get; set; }
-        public string op_no { get; set; }
-        public string remark { get; set; }
-    }
-
-    private static List<MyRow> dbRows = new List<MyRow>();
-    private static int nextId = 1;
-
-    protected void Page_Load(object sender, EventArgs e)
-    {
-        if (!IsPostBack && dbRows.Count == 0)
+        // 假設您有一個存儲頻率設定的數據源
+        DataTable frequencyTable = GetFrequencyData();
+        lookup.DataSource = frequencyTable;
+        lookup.DataBind();
+        
+        // 設置初始值
+        if (Container is GridViewEditFormTemplateContainer container)
         {
-            // 模擬資料
-            dbRows.Add(new MyRow { Id = nextId++, chpgrp = "G1", op_no = "10", remark = "Test" });
-        }
-    }
-
-    protected void grid_NeedDataSource(object sender, EventArgs e)
-    {
-        grid.DataSource = dbRows;
-    }
-
-    protected void grid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-    {
-        string chpgrp = e.NewValues["chpgrp"]?.ToString();
-        string remark = e.NewValues["remark"]?.ToString();
-
-        // 模擬 Oracle 查詢該 chpgrp 對應的 3 筆資料
-        var resultFromOracle = GetRowsFromOracle(chpgrp);
-
-        foreach (var item in resultFromOracle)
-        {
-            dbRows.Add(new MyRow
+            var dataRow = container.Grid.GetDataRow(container.VisibleIndex);
+            if (dataRow != null)
             {
-                Id = nextId++,
-                chpgrp = chpgrp,
-                op_no = item,
-                remark = remark
-            });
-        }
-
-        e.Cancel = true;
-        grid.CancelEdit();
-        grid.DataBind();
-    }
-
-    protected void comboChpgrp_SelectedIndexChanged(object sender, EventArgs e)
-    {
-        // 可以在這裡即時更新，但實務上不建議用 Server-Side Control PostBack 在 ComboBox 事件中新增行，建議保留目前作法
-    }
-
-    private List<string> GetRowsFromOracle(string chpgrp)
-    {
-        // 你可以在這裡撈 Oracle，例如：
-        // SELECT op_no FROM my_table WHERE chpgrp = :chpgrp;
-        return new List<string> { "100", "200", "300" };
-    }
-
-    protected void grid_CellEditorInitialize(object sender, ASPxGridViewEditorEventArgs e)
-    {
-        if (e.Column.FieldName == "chpgrp" && e.Editor is ASPxComboBox combo)
-        {
-            combo.DataSource = new List<string> { "G1", "G2", "G3" };
-            combo.ValueField = "Value";
-            combo.TextField = "Value";
-            combo.DataBind();
+                lookup.Value = dataRow["FrequencyField"];
+            }
         }
     }
 }
 
-3. 效果示意
-	1.	點「新增」 → 最上方出現空列。
-	2.	在 chpgrp 選擇 “G2”。
-	3.	輸入其他欄位 → 按下儲存。
-	4.	Grid 將自動加上 3 筆資料列（例：op_no = 100, 200, 300）。
+// 創建頻率數據源的示例方法
+private DataTable GetFrequencyData()
+{
+    DataTable dt = new DataTable();
+    dt.Columns.Add("ID", typeof(int));
+    dt.Columns.Add("Frequency", typeof(int));
+    dt.Columns.Add("PeriodType", typeof(string));
+    
+    // 添加一些預設值
+    dt.Rows.Add(1, 1, "天");
+    dt.Rows.Add(2, 2, "天");
+    dt.Rows.Add(3, 1, "週");
+    dt.Rows.Add(4, 2, "週");
+    dt.Rows.Add(5, 1, "月");
+    
+    return dt;
+}
+```
 
-你可以自行調整的地方
+如果您希望用戶能夠直接在 GridLookup 中編輯和新增記錄，您需要添加以下設置：
 
-功能	可改動範圍
-資料來源	改為你自己的 Oracle 查詢
-下拉選單來源	可查 DB 或硬編寫
-加上其他欄位	如 user, layer, pr 等
-暫存區	可改用 Session / ViewState
+```aspx
+<dx:ASPxGridLookup ... >
+    <GridViewProperties>
+        <!-- 其他設定 -->
+        <SettingsEditing Mode="Inline" />
+        <Settings ShowStatusBar="Visible" />
+    </GridViewProperties>
+    
+    <!-- 在底部添加按鈕 -->
+    <ButtonStyle Width="13px"></ButtonStyle>
+    <Buttons>
+        <dx:EditButton Text="編輯"></dx:EditButton>
+    </Buttons>
+    
+    <!-- 在底部狀態欄添加按鈕 -->
+    <SettingsLoadingPanel Text="載入中..." />
+    <Templates>
+        <StatusBar>
+            <dx:ASPxButton ID="AddButton" runat="server" Text="新增" AutoPostBack="false" ClientSideEvents-Click="function(s, e) { frequencyLookup.AddNewRow(); }" />
+        </StatusBar>
+    </Templates>
+</dx:ASPxGridLookup>
+```
 
-如果你要我幫你套進你現有的專案，我也可以，你只要提供你現有 Grid 的欄位與基本欄位型別即可。
-需要我幫你包成 zip 可匯入的 Visual Studio 專案嗎？還是你要直接改寫你現有的頁面？
+這個解決方案將在您的 GridView 中嵌入一個包含兩個可編輯欄位的 GridLookup 控件：一個是數字輸入框用於輸入次數，另一個是下拉選單用於選擇週期類型（週/天/月）。用戶可以從預設值中選擇，也可以根據需要新增或編輯記錄。
+
+需要根據您的具體數據結構和業務邏輯進行一些調整，尤其是數據綁定和保存部分。​​​​​​​​​​​​​​​​
