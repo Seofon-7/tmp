@@ -1,136 +1,160 @@
-了解您的需求，您想在 GridView 中嵌入一個 Lookup 編輯器，其中包含兩個欄位：一個是次數（用戶可以直接輸入），另一個是週/天（用戶可以從下拉選單中選擇）。
+了解，针对 .NET Framework 4.7.2 和 DevExpress 19.2 版本，我将为您提供适用的解决方案。这两个版本完全兼容以下实现方法：
 
-我將為您提供一個完整的解決方案：
-
-1. 首先在 GridView 中添加使用自定義模板的列
-2. 在模板中實現包含兩個輸入控件的 ASPxGridLookup
-
-以下是具體實現代碼：
+以下是基于 .NET 4.7.2 和 DevExpress 19.2 的实现代码：
 
 ```aspx
-<dx:ASPxGridView ID="ASPxGridView1" runat="server" ... >
+<%-- 在 ASPxGridView 中添加编辑列 --%>
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" 
+    OnRowUpdating="ASPxGridView1_RowUpdating" 
+    OnRowInserting="ASPxGridView1_RowInserting">
     <Columns>
         <!-- 其他列 -->
         
-        <dx:GridViewDataColumn FieldName="FrequencyField" Caption="頻率設定">
+        <dx:GridViewDataColumn FieldName="FrequencySettings" Caption="頻率設定">
             <EditItemTemplate>
-                <dx:ASPxGridLookup ID="FrequencyLookup" runat="server" 
-                    KeyFieldName="ID" 
-                    TextFormatString="{0} 次/{1}" 
-                    ClientInstanceName="frequencyLookup"
-                    Width="100%"
-                    OnInit="FrequencyLookup_Init">
-                    <GridViewProperties>
-                        <SettingsBehavior AllowFocusedRow="True" AllowSelectSingleRowOnly="True" />
-                        <Settings ShowFilterRow="True" />
-                    </GridViewProperties>
-                    <Columns>
-                        <dx:GridViewDataColumn FieldName="ID" Caption="ID" Visible="false" />
-                        <dx:GridViewDataColumn FieldName="Frequency" Caption="次數">
-                            <EditItemTemplate>
-                                <dx:ASPxSpinEdit ID="FrequencyEdit" runat="server" 
-                                    Value='<%# Bind("Frequency") %>'
-                                    MinValue="1" Width="100%">
-                                </dx:ASPxSpinEdit>
-                            </EditItemTemplate>
-                        </dx:GridViewDataColumn>
-                        <dx:GridViewDataColumn FieldName="PeriodType" Caption="週/天">
-                            <EditItemTemplate>
-                                <dx:ASPxComboBox ID="PeriodTypeCombo" runat="server" 
-                                    Value='<%# Bind("PeriodType") %>'
-                                    Width="100%">
-                                    <Items>
-                                        <dx:ListEditItem Text="天" Value="天" />
-                                        <dx:ListEditItem Text="週" Value="週" />
-                                        <dx:ListEditItem Text="月" Value="月" />
-                                    </Items>
-                                </dx:ASPxComboBox>
-                            </EditItemTemplate>
-                        </dx:GridViewDataColumn>
-                    </Columns>
-                    <GridViewStyles>
-                        <Header Paddings-Padding="8px" />
-                        <Cell Paddings-Padding="8px" />
-                    </GridViewStyles>
-                </dx:ASPxGridLookup>
+                <table style="width:100%">
+                    <tr>
+                        <td style="width:50%">
+                            <dx:ASPxSpinEdit ID="FrequencyEdit" runat="server" 
+                                Value='<%# GetFrequencyValue(Eval("FrequencySettings")) %>'
+                                MinValue="1" Width="100%" Caption="次數">
+                            </dx:ASPxSpinEdit>
+                        </td>
+                        <td style="width:50%">
+                            <dx:ASPxComboBox ID="PeriodTypeCombo" runat="server" 
+                                Value='<%# GetPeriodValue(Eval("FrequencySettings")) %>'
+                                Width="100%" Caption="週期">
+                                <Items>
+                                    <dx:ListEditItem Text="天" Value="天" />
+                                    <dx:ListEditItem Text="週" Value="週" />
+                                    <dx:ListEditItem Text="月" Value="月" />
+                                </Items>
+                            </dx:ASPxComboBox>
+                        </td>
+                    </tr>
+                </table>
             </EditItemTemplate>
+            <DataItemTemplate>
+                <%# FormatFrequencyDisplay(Eval("FrequencySettings")) %>
+            </DataItemTemplate>
         </dx:GridViewDataColumn>
         
         <!-- 其他列 -->
     </Columns>
+    <SettingsEditing Mode="Inline" />
+    <SettingsCommandButton>
+        <EditButton Text="編輯" />
+        <UpdateButton Text="保存" />
+        <CancelButton Text="取消" />
+    </SettingsCommandButton>
 </dx:ASPxGridView>
 ```
 
-後台代碼：
+后台代码（C#）：
 
 ```csharp
-protected void FrequencyLookup_Init(object sender, EventArgs e)
+// 从存储值中获取频率数值部分
+protected int GetFrequencyValue(object frequencySettings)
 {
-    ASPxGridLookup lookup = sender as ASPxGridLookup;
-    if (lookup != null)
+    if (frequencySettings == null) return 1;
+    
+    string setting = frequencySettings.ToString();
+    
+    // 假设格式为 "次數:週期"，例如 "3:週"
+    string[] parts = setting.Split(':');
+    if (parts.Length < 1) return 1;
+    
+    int frequency;
+    if (int.TryParse(parts[0], out frequency))
+        return frequency;
+    
+    return 1;
+}
+
+// 从存储值中获取周期类型部分
+protected string GetPeriodValue(object frequencySettings)
+{
+    if (frequencySettings == null) return "天";
+    
+    string setting = frequencySettings.ToString();
+    
+    // 假设格式为 "次數:週期"，例如 "3:週"
+    string[] parts = setting.Split(':');
+    if (parts.Length < 2) return "天";
+    
+    return parts[1];
+}
+
+// 格式化显示频率设置
+protected string FormatFrequencyDisplay(object frequencySettings)
+{
+    if (frequencySettings == null) return "";
+    
+    string setting = frequencySettings.ToString();
+    string[] parts = setting.Split(':');
+    
+    if (parts.Length < 2) return setting;
+    
+    return string.Format("{0} 次/{1}", parts[0], parts[1]);
+}
+
+// 處理行更新事件
+protected void ASPxGridView1_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+{
+    // 获取编辑模板中的控件值
+    ASPxSpinEdit frequencyEdit = ASPxGridView1.FindEditFormTemplateControl("FrequencyEdit") as ASPxSpinEdit;
+    ASPxComboBox periodTypeCombo = ASPxGridView1.FindEditFormTemplateControl("PeriodTypeCombo") as ASPxComboBox;
+    
+    if (frequencyEdit != null && periodTypeCombo != null)
     {
-        // 假設您有一個存儲頻率設定的數據源
-        DataTable frequencyTable = GetFrequencyData();
-        lookup.DataSource = frequencyTable;
-        lookup.DataBind();
+        // 将两个字段的值组合成一个存储值
+        string combinedValue = string.Format("{0}:{1}", frequencyEdit.Value, periodTypeCombo.Value);
         
-        // 設置初始值
-        if (Container is GridViewEditFormTemplateContainer container)
-        {
-            var dataRow = container.Grid.GetDataRow(container.VisibleIndex);
-            if (dataRow != null)
-            {
-                lookup.Value = dataRow["FrequencyField"];
-            }
-        }
+        // 更新到e.NewValues中
+        e.NewValues["FrequencySettings"] = combinedValue;
     }
+    
+    // 可能需要取消默认更新行为并手动更新数据
+    // e.Cancel = true;
+    
+    // 更新您的数据源
+    // UpdateRow(e.Keys, e.NewValues);
+    
+    // 刷新GridView
+    ASPxGridView1.CancelEdit();
 }
 
-// 創建頻率數據源的示例方法
-private DataTable GetFrequencyData()
+// 處理行插入事件
+protected void ASPxGridView1_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
 {
-    DataTable dt = new DataTable();
-    dt.Columns.Add("ID", typeof(int));
-    dt.Columns.Add("Frequency", typeof(int));
-    dt.Columns.Add("PeriodType", typeof(string));
+    // 与RowUpdating类似的逻辑
+    ASPxSpinEdit frequencyEdit = ASPxGridView1.FindEditFormTemplateControl("FrequencyEdit") as ASPxSpinEdit;
+    ASPxComboBox periodTypeCombo = ASPxGridView1.FindEditFormTemplateControl("PeriodTypeCombo") as ASPxComboBox;
     
-    // 添加一些預設值
-    dt.Rows.Add(1, 1, "天");
-    dt.Rows.Add(2, 2, "天");
-    dt.Rows.Add(3, 1, "週");
-    dt.Rows.Add(4, 2, "週");
-    dt.Rows.Add(5, 1, "月");
+    if (frequencyEdit != null && periodTypeCombo != null)
+    {
+        string combinedValue = string.Format("{0}:{1}", frequencyEdit.Value, periodTypeCombo.Value);
+        e.NewValues["FrequencySettings"] = combinedValue;
+    }
     
-    return dt;
+    // 可能需要取消默认插入行为并手动插入数据
+    // e.Cancel = true;
+    
+    // 插入到您的数据源
+    // InsertNewRow(e.NewValues);
+    
+    // 刷新GridView
+    ASPxGridView1.CancelEdit();
 }
 ```
 
-如果您希望用戶能夠直接在 GridLookup 中編輯和新增記錄，您需要添加以下設置：
+这个解决方案的关键点：
 
-```aspx
-<dx:ASPxGridLookup ... >
-    <GridViewProperties>
-        <!-- 其他設定 -->
-        <SettingsEditing Mode="Inline" />
-        <Settings ShowStatusBar="Visible" />
-    </GridViewProperties>
-    
-    <!-- 在底部添加按鈕 -->
-    <ButtonStyle Width="13px"></ButtonStyle>
-    <Buttons>
-        <dx:EditButton Text="編輯"></dx:EditButton>
-    </Buttons>
-    
-    <!-- 在底部狀態欄添加按鈕 -->
-    <SettingsLoadingPanel Text="載入中..." />
-    <Templates>
-        <StatusBar>
-            <dx:ASPxButton ID="AddButton" runat="server" Text="新增" AutoPostBack="false" ClientSideEvents-Click="function(s, e) { frequencyLookup.AddNewRow(); }" />
-        </StatusBar>
-    </Templates>
-</dx:ASPxGridLookup>
-```
+1. 使用简单的表格布局在同一行中放置两个编辑控件（次数和週期）
+2. 不使用复杂的 GridLookup，而是直接使用 ASPxSpinEdit 和 ASPxComboBox
+3. 使用分隔符（如":"）将两个值组合存储在一个字段中
+4. 提供了格式化函数以便在非编辑模式下显示格式化的值
 
-這個解決方案將在您的 GridView 中嵌入一個包含兩個可編輯欄位的 GridLookup 控件：一個是數字輸入框用於輸入次數，另一個是下拉選單用於選擇週期類型（週/天/月）。用戶可以從預設值中選擇，也可以根據需要新增或編輯記錄。
+这种方法在 .NET 4.7.2 和 DevExpress 19.2 中完全支持，并且比使用 GridLookup 更简单、更轻量级。您可以根据实际数据结构和存储方式调整分隔和组合值的逻辑。
 
-需要根據您的具體數據結構和業務邏輯進行一些調整，尤其是數據綁定和保存部分。​​​​​​​​​​​​​​​​
+如果您想将这些值存储在不同的数据库字段中，只需修改 RowUpdating 和 RowInserting 事件处理程序，将分别获取的值分别赋给对应的字段即可。​​​​​​​​​​​​​​​​
