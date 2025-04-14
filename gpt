@@ -1,0 +1,174 @@
+// Default.aspx
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Default.aspx.cs" Inherits="YourNamespace.Default" %>
+<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>SPC Tool</title>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <dx:ASPxMenu ID="menuToolbar" runat="server" Orientation="Horizontal" OnItemClick="menuToolbar_ItemClick">
+            <Items>
+                <dx:MenuItem Text="新增" Name="Add" />
+                <dx:MenuItem Text="儲存" Name="Save" />
+            </Items>
+        </dx:ASPxMenu>
+
+        <dx:ASPxTextBox ID="txtSearch" runat="server" Width="150px" />
+        <dx:ASPxButton ID="btnSearch" runat="server" Text="搜尋" AutoPostBack="true" OnClick="btnSearch_Click" />
+
+        <dx:ASPxGridView ID="grid" runat="server" KeyFieldName="ID" AutoGenerateColumns="False"
+            OnRowUpdating="grid_RowUpdating" OnRowInserting="grid_RowInserting" OnRowDeleting="grid_RowDeleting"
+            OnDataBinding="grid_DataBinding">
+            <SettingsEditing Mode="Inline" NewItemRowPosition="Bottom" />
+            <SettingsPager PageSize="20" />
+            <Columns>
+                <dx:GridViewDataTextColumn FieldName="chp_grp" Caption="CHP Group" />
+                <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer" />
+                <dx:GridViewDataTextColumn FieldName="ope_no" Caption="OPE No" />
+                <dx:GridViewDataCheckColumn FieldName="PR" Caption="PR" />
+                <dx:GridViewDataTextColumn FieldName="frequency" Caption="頻率">
+                    <EditItemTemplate>
+                        <asp:TextBox ID="txtFreqCount" runat="server" Width="40px" />次：
+                        <asp:TextBox ID="txtFreqTime" runat="server" Width="40px" />
+                        <asp:DropDownList ID="ddlFreqUnit" runat="server">
+                            <asp:ListItem Text="天" Value="天" />
+                            <asp:ListItem Text="週" Value="週" />
+                        </asp:DropDownList>
+                    </EditItemTemplate>
+                </dx:GridViewDataTextColumn>
+                <dx:GridViewCommandColumn ShowEditButton="True" ShowDeleteButton="True" />
+            </Columns>
+        </dx:ASPxGridView>
+
+        <dx:ASPxPopupControl ID="popupAdd" runat="server" Width="400px" HeaderText="新增資料">
+            <ContentCollection>
+                <dx:PopupControlContentControl>
+                    <dx:ASPxComboBox ID="ddlChpGrp" runat="server" DataSourceID="dsChpGrp" ValueField="chp_grp" TextField="chp_grp" />
+                    <!-- 其他欄位輸入區 -->
+                    <dx:ASPxButton ID="btnAddConfirm" runat="server" Text="確定" OnClick="btnAddConfirm_Click" />
+                </dx:PopupControlContentControl>
+            </ContentCollection>
+        </dx:ASPxPopupControl>
+
+        <asp:SqlDataSource ID="dsChpGrp" runat="server"
+            ProviderName="System.Data.OracleClient"
+            ConnectionString="<%$ ConnectionStrings:OracleDb %>"
+            SelectCommand="SELECT DISTINCT chp_grp FROM flow_mapping ORDER BY chp_grp" />
+    </form>
+</body>
+</html>
+
+// Default.aspx.cs
+using System;
+using System.Data;
+using System.Web.UI;
+
+namespace YourNamespace
+{
+    public partial class Default : Page
+    {
+        protected void Page_Load(object sender, EventArgs e)
+        {
+            if (!IsPostBack)
+                grid.DataBind();
+        }
+
+        protected void grid_DataBinding(object sender, EventArgs e)
+        {
+            grid.DataSource = Session["GridData"] ??= GetData();
+        }
+
+        protected void btnSearch_Click(object sender, EventArgs e)
+        {
+            string keyword = txtSearch.Text.Trim();
+            DataTable dt = GetData();
+            if (!string.IsNullOrEmpty(keyword))
+                dt = dt.Select($"chp_grp LIKE '%{keyword}%' ").CopyToDataTable();
+            Session["GridData"] = dt;
+            grid.DataBind();
+        }
+
+        protected void grid_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+        {
+            e.Cancel = true;
+            DataTable dt = (DataTable)Session["GridData"];
+            DataRow row = dt.Rows.Find(e.Keys["ID"]);
+            row["chp_grp"] = e.NewValues["chp_grp"];
+            row["layer"] = e.NewValues["layer"];
+            row["ope_no"] = e.NewValues["ope_no"];
+            row["PR"] = e.NewValues["PR"];
+            row["frequency"] = FormatFrequency(e);
+            Session["GridData"] = dt;
+            grid.CancelEdit();
+        }
+
+        protected void grid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+        {
+            e.Cancel = true;
+            DataTable dt = (DataTable)Session["GridData"];
+            DataRow newRow = dt.NewRow();
+            newRow["ID"] = Guid.NewGuid().ToString();
+            newRow["chp_grp"] = e.NewValues["chp_grp"];
+            newRow["layer"] = e.NewValues["layer"];
+            newRow["ope_no"] = e.NewValues["ope_no"];
+            newRow["PR"] = e.NewValues["PR"];
+            newRow["frequency"] = FormatFrequency(e);
+            dt.Rows.Add(newRow);
+            Session["GridData"] = dt;
+            grid.CancelEdit();
+        }
+
+        protected void grid_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
+        {
+            e.Cancel = true;
+            DataTable dt = (DataTable)Session["GridData"];
+            DataRow row = dt.Rows.Find(e.Keys["ID"]);
+            dt.Rows.Remove(row);
+            Session["GridData"] = dt;
+        }
+
+        protected void menuToolbar_ItemClick(object source, DevExpress.Web.MenuItemEventArgs e)
+        {
+            if (e.Item.Name == "Add")
+                popupAdd.ShowOnPageLoad = true;
+            else if (e.Item.Name == "Save")
+                SaveToDatabase((DataTable)Session["GridData"]);
+        }
+
+        protected void btnAddConfirm_Click(object sender, EventArgs e)
+        {
+            // 實作 popup 新增資料的邏輯
+        }
+
+        private string FormatFrequency(dynamic e)
+        {
+            var freqCount = e.NewValues["txtFreqCount"]?.ToString();
+            var freqTime = e.NewValues["txtFreqTime"]?.ToString();
+            var freqUnit = e.NewValues["ddlFreqUnit"]?.ToString();
+            return $"{freqCount}次:{freqTime}{freqUnit}";
+        }
+
+        private DataTable GetData()
+        {
+            // 模擬從 Oracle 抓資料
+            DataTable dt = new DataTable();
+            dt.Columns.Add("ID", typeof(string));
+            dt.Columns.Add("chp_grp", typeof(string));
+            dt.Columns.Add("layer", typeof(string));
+            dt.Columns.Add("ope_no", typeof(string));
+            dt.Columns.Add("PR", typeof(bool));
+            dt.Columns.Add("frequency", typeof(string));
+            dt.PrimaryKey = new[] { dt.Columns["ID"] };
+            // 加入假資料或用 OracleDataAdapter 填資料
+            return dt;
+        }
+
+        private void SaveToDatabase(DataTable dt)
+        {
+            // 使用 MERGE INTO ... WHEN MATCHED / NOT MATCHED 方式將 dt 寫入 Oracle 資料庫
+        }
+    }
+}
