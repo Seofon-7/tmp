@@ -52,6 +52,7 @@
                 <SettingsBehavior AllowFocusedRow="true" ConfirmDelete="true" />
                 <SettingsPager PageSize="20" />
                 <SettingsEditing Mode="Inline" />
+                <SettingsText FilterRowPopupCaption="過濾條件" />
                 
                 <Toolbars>
                     <dx:GridViewToolbar>
@@ -76,6 +77,9 @@
                                     </div>
                                 </Template>
                             </dx:GridViewToolbarItem>
+                            <dx:GridViewToolbarItem Name="ClearFilter" Text="清除篩選" BeginGroup="true">
+                                <ClientSideEvents Click="function(s, e){ gridSpcToolRank.ClearFilter(); }" />
+                            </dx:GridViewToolbarItem>
                         </Items>
                     </dx:GridViewToolbar>
                 </Toolbars>
@@ -97,6 +101,9 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesComboBox>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
+                        <SettingsHeaderFilter Mode="CheckedList">
+                        </SettingsHeaderFilter>
+                        <SettingsFilterControl FilterType="CheckedList" />
                     </dx:GridViewDataComboBoxColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="LAYER" Caption="LAYER" Width="100px">
@@ -104,6 +111,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
+                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="OPE_NO" Caption="OPE_NO" Width="100px">
@@ -111,6 +119,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
+                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="PR" Caption="PR" Width="100px">
@@ -118,6 +127,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
+                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="FREQUENCY" Caption="頻率" Width="150px">
@@ -125,6 +135,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
+                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
                         <EditItemTemplate>
                             <div class="frequency-container">
                                 <div>
@@ -153,6 +164,11 @@
                     if (e.item.name === 'SaveAll') {
                         saveAllData();
                     }
+                }" 
+                Init="function(s, e) {
+                    s.ApplyFilterByColumn = function(fieldName, filterConditionType, filterExpression) {
+                        s.AutoFilterByColumn(fieldName, filterExpression);
+                    };
                 }" />
             </dx:ASPxGridView>
             
@@ -278,8 +294,34 @@
         function showAddPopup(copyRow) {
             if (copyRow) {
                 var focusedRowIndex = gridSpcToolRank.GetFocusedRowIndex();
+                if (focusedRowIndex < 0) {
+                    alert("請先選擇一筆資料");
+                    return;
+                }
+                
                 var chpGrpValue = gridSpcToolRank.GetRowValues(focusedRowIndex, 'CHP_GRP');
+                var layerValue = gridSpcToolRank.GetRowValues(focusedRowIndex, 'LAYER');
+                var opeNoValue = gridSpcToolRank.GetRowValues(focusedRowIndex, 'OPE_NO');
+                var prValue = gridSpcToolRank.GetRowValues(focusedRowIndex, 'PR');
+                var freqValue = gridSpcToolRank.GetRowValues(focusedRowIndex, 'FREQUENCY');
+                
                 cboChpGrp.SetValue(chpGrpValue);
+                txtLayer.SetText(layerValue);
+                txtOpeNo.SetText(opeNoValue);
+                txtPR.SetText(prValue);
+                
+                // Parse frequency value for copy
+                var freqParts = freqValue.split(':');
+                if (freqParts.length == 2) {
+                    var countPart = freqParts[0].replace('次', '');
+                    seFrequencyCount.SetValue(parseInt(countPart) || 1);
+                    
+                    var valuePart = freqParts[1].replace(/[0-9]/g, '');
+                    var numPart = freqParts[1].replace(/[^0-9]/g, '');
+                    
+                    cboFrequencyType.SetValue(valuePart || '天');
+                    seFrequencyValue.SetValue(parseInt(numPart) || 1);
+                }
             } else {
                 cboChpGrp.SetValue(null);
                 txtLayer.SetText('');
@@ -291,6 +333,13 @@
             }
             
             popupAddEdit.Show();
+        }
+        
+        // 處理複製新增按鈕
+        function OnCustomButtonClick(s, e) {
+            if (e.buttonID === 'btnAdd') {
+                showAddPopup(true);
+            }
         }
     </script>
 </body>
