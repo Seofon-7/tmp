@@ -1,685 +1,305 @@
-// 1. 首先創建項目結構
-// 設置基本類別和模型
-
-// Model/SpcToolRank.cs - 定義數據模型
-using System;
-using System.ComponentModel.DataAnnotations;
-
-namespace SpcToolRankWeb.Models
-{
-    public class SpcToolRank
-    {
-        public string ChpGrp { get; set; }
-        public string Layer { get; set; }
-        public string OpeNo { get; set; }
-        public string PR { get; set; }
-        public string Frequency { get; set; }
-        
-        // 用於標記數據狀態，用於批量保存
-        public enum DataState
-        {
-            Unchanged,
-            Added,
-            Modified,
-            Deleted
-        }
-        
-        public DataState State { get; set; } = DataState.Unchanged;
-    }
-    
-    // 用於頻率選擇的輔助類
-    public class FrequencySettings
-    {
-        public int Count { get; set; }
-        public string Unit { get; set; } // "天" 或 "週"
-        public int UnitCount { get; set; }
-        
-        // 解析頻率字符串
-        public static FrequencySettings Parse(string frequency)
-        {
-            if (string.IsNullOrEmpty(frequency))
-                return new FrequencySettings { Count = 1, Unit = "天", UnitCount = 1 };
-                
-            try
-            {
-                var parts = frequency.Split(':');
-                if (parts.Length != 2)
-                    return new FrequencySettings { Count = 1, Unit = "天", UnitCount = 1 };
-                
-                int count = int.Parse(parts[0].Replace("次", ""));
-                
-                string unitPart = parts[1];
-                string unit = unitPart.Contains("天") ? "天" : "週";
-                int unitCount = int.Parse(unitPart.Replace("天", "").Replace("週", ""));
-                
-                return new FrequencySettings
-                {
-                    Count = count,
-                    Unit = unit,
-                    UnitCount = unitCount
-                };
-            }
-            catch
-            {
-                return new FrequencySettings { Count = 1, Unit = "天", UnitCount = 1 };
-            }
-        }
-        
-        // 轉換為保存格式
-        public override string ToString()
-        {
-            return $"{Count}次:{UnitCount}{Unit}";
-        }
-    }
-}
-
-// Data/OracleDataAccess.cs - 數據訪問層
 using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
-using Oracle.ManagedDataAccess.Client;
-using SpcToolRankWeb.Models;
-
-namespace SpcToolRankWeb.Data
-{
-    public class OracleDataAccess
-    {
-        private string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
-        
-        // 獲取SPC Tool Rank數據列表
-        public List<SpcToolRank> GetSpcToolRanks(string chpGrpFilter = "")
-        {
-            var result = new List<SpcToolRank>();
-            
-            using (var conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                
-                string sql = "SELECT chp_grp, layer, ope_no, pr, frequency FROM spc_tool_rank";
-                
-                if (!string.IsNullOrWhiteSpace(chpGrpFilter))
-                {
-                    sql += " WHERE chp_grp LIKE :chpGrp";
-                }
-                
-                sql += " ORDER BY chp_grp, layer, ope_no";
-                
-                using (var cmd = new OracleCommand(sql, conn))
-                {
-                    if (!string.IsNullOrWhiteSpace(chpGrpFilter))
-                    {
-                        cmd.Parameters.Add(new OracleParameter("chpGrp", $"%{chpGrpFilter}%"));
-                    }
-                    
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            result.Add(new SpcToolRank
-                            {
-                                ChpGrp = reader["chp_grp"].ToString(),
-                                Layer = reader["layer"].ToString(),
-                                OpeNo = reader["ope_no"].ToString(),
-                                PR = reader["pr"].ToString(),
-                                Frequency = reader["frequency"].ToString(),
-                                State = SpcToolRank.DataState.Unchanged
-                            });
-                        }
-                    }
-                }
-            }
-            
-            return result;
-        }
-        
-        // 獲取flow_mapping表中的chp_grp值列表
-        public List<string> GetChpGrpList()
-        {
-            var result = new List<string>();
-            
-            using (var conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                
-                string sql = "SELECT DISTINCT chp_grp FROM flow_mapping ORDER BY chp_grp";
-                
-                using (var cmd = new OracleCommand(sql, conn))
-                {
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            result.Add(reader["chp_grp"].ToString());
-                        }
-                    }
-                }
-            }
-            
-            return result;
-        }
-        
-        // 保存所有數據變更
-        public void SaveChanges(List<SpcToolRank> toolRanks)
-        {
-            using (var conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                using (var transaction = conn.BeginTransaction())
-                {
-                    try
-                    {
-                        foreach (var item in toolRanks)
-                        {
-                            switch (item.State)
-                            {
-                                case SpcToolRank.DataState.Added:
-                                    InsertSpcToolRank(conn, item);
-                                    break;
-                                case SpcToolRank.DataState.Modified:
-                                    UpdateSpcToolRank(conn, item);
-                                    break;
-                                case SpcToolRank.DataState.Deleted:
-                                    DeleteSpcToolRank(conn, item);
-                                    break;
-                            }
-                        }
-                        
-                        transaction.Commit();
-                    }
-                    catch
-                    {
-                        transaction.Rollback();
-                        throw;
-                    }
-                }
-            }
-        }
-        
-        // 插入新記錄
-        private void InsertSpcToolRank(OracleConnection conn, SpcToolRank item)
-        {
-            string sql = @"INSERT INTO spc_tool_rank (chp_grp, layer, ope_no, pr, frequency) 
-                          VALUES (:chpGrp, :layer, :opeNo, :pr, :frequency)";
-            
-            using (var cmd = new OracleCommand(sql, conn))
-            {
-                cmd.Parameters.Add(new OracleParameter("chpGrp", item.ChpGrp));
-                cmd.Parameters.Add(new OracleParameter("layer", item.Layer));
-                cmd.Parameters.Add(new OracleParameter("opeNo", item.OpeNo));
-                cmd.Parameters.Add(new OracleParameter("pr", item.PR));
-                cmd.Parameters.Add(new OracleParameter("frequency", item.Frequency));
-                
-                cmd.ExecuteNonQuery();
-            }
-        }
-        
-        // 更新現有記錄
-        private void UpdateSpcToolRank(OracleConnection conn, SpcToolRank item)
-        {
-            string sql = @"UPDATE spc_tool_rank 
-                          SET layer = :layer, 
-                              ope_no = :opeNo, 
-                              pr = :pr, 
-                              frequency = :frequency
-                          WHERE chp_grp = :chpGrp";
-            
-            using (var cmd = new OracleCommand(sql, conn))
-            {
-                cmd.Parameters.Add(new OracleParameter("layer", item.Layer));
-                cmd.Parameters.Add(new OracleParameter("opeNo", item.OpeNo));
-                cmd.Parameters.Add(new OracleParameter("pr", item.PR));
-                cmd.Parameters.Add(new OracleParameter("frequency", item.Frequency));
-                cmd.Parameters.Add(new OracleParameter("chpGrp", item.ChpGrp));
-                
-                cmd.ExecuteNonQuery();
-            }
-        }
-        
-        // 刪除記錄
-        private void DeleteSpcToolRank(OracleConnection conn, SpcToolRank item)
-        {
-            string sql = "DELETE FROM spc_tool_rank WHERE chp_grp = :chpGrp";
-            
-            using (var cmd = new OracleCommand(sql, conn))
-            {
-                cmd.Parameters.Add(new OracleParameter("chpGrp", item.ChpGrp));
-                cmd.ExecuteNonQuery();
-            }
-        }
-    }
-}
-
-// 2. 創建網頁和控制器
-// Default.aspx - 主頁面
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Default.aspx.cs" Inherits="SpcToolRankWeb.Default" %>
-<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" 
-    Namespace="DevExpress.Web" TagPrefix="dx" %>
-
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head runat="server">
-    <title>SPC Tool Rank Management</title>
-    <style type="text/css">
-        .main-container {
-            width: 95%;
-            margin: 20px auto;
-        }
-        .toolbar {
-            margin-bottom: 15px;
-        }
-        .frequency-container {
-            display: flex;
-            align-items: center;
-        }
-        .frequency-input {
-            width: 60px;
-            margin-right: 5px;
-        }
-        .frequency-select {
-            width: 80px;
-            margin: 0 5px;
-        }
-    </style>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <div class="main-container">
-            <dx:ASPxFormLayout ID="FormLayout" runat="server" Width="100%">
-                <Items>
-                    <dx:LayoutGroup Caption="SPC Tool Rank Management" Width="100%">
-                        <Items>
-                            <dx:LayoutItem ShowCaption="False">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                        <div class="toolbar">
-                                            <dx:ASPxButton ID="btnAdd" runat="server" Text="新增" AutoPostBack="false" Width="80px">
-                                                <ClientSideEvents Click="function(s, e) { PreparePrefillData(); popupEditForm.Show(); }" />
-                                            </dx:ASPxButton>
-                                            <dx:ASPxButton ID="btnSave" runat="server" Text="儲存" AutoPostBack="true" Width="80px" OnClick="btnSave_Click" />
-                                            <dx:ASPxTextBox ID="txtSearch" runat="server" Width="200px" NullText="輸入Chp_Grp搜尋..." />
-                                            <dx:ASPxButton ID="btnSearch" runat="server" Text="搜尋" AutoPostBack="true" Width="80px" OnClick="btnSearch_Click" />
-                                        </div>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                            <dx:LayoutItem ShowCaption="False">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                                                                    <dx:ASPxGridView ID="gridToolRank" runat="server" Width="100%" KeyFieldName="ChpGrp"
-                                            OnRowInserting="gridToolRank_RowInserting"
-                                            OnRowUpdating="gridToolRank_RowUpdating"
-                                            OnRowDeleting="gridToolRank_RowDeleting"
-                                            OnCustomColumnDisplayText="gridToolRank_CustomColumnDisplayText"
-                                            ClientInstanceName="gridToolRank">
-                                            <SettingsPager PageSize="20" />
-                                            <SettingsEditing Mode="Inline" />
-                                            <SettingsBehavior AllowFocusedRow="true" />
-                                            <Columns>
-                                                <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" Width="100" />
-                                                <dx:GridViewDataTextColumn FieldName="ChpGrp" Caption="Chp_Grp" Width="150">
-                                                    <PropertiesTextEdit>
-                                                        <ValidationSettings RequiredField-IsRequired="true" />
-                                                    </PropertiesTextEdit>
-                                                </dx:GridViewDataTextColumn>
-                                                <dx:GridViewDataTextColumn FieldName="Layer" Caption="Layer" Width="120">
-                                                    <PropertiesTextEdit>
-                                                        <ValidationSettings RequiredField-IsRequired="true" />
-                                                    </PropertiesTextEdit>
-                                                </dx:GridViewDataTextColumn>
-                                                <dx:GridViewDataTextColumn FieldName="OpeNo" Caption="Ope_No" Width="120">
-                                                    <PropertiesTextEdit>
-                                                        <ValidationSettings RequiredField-IsRequired="true" />
-                                                    </PropertiesTextEdit>
-                                                </dx:GridViewDataTextColumn>
-                                                <dx:GridViewDataTextColumn FieldName="PR" Caption="PR" Width="120">
-                                                    <PropertiesTextEdit>
-                                                        <ValidationSettings RequiredField-IsRequired="true" />
-                                                    </PropertiesTextEdit>
-                                                </dx:GridViewDataTextColumn>
-                                                <dx:GridViewDataTextColumn FieldName="Frequency" Caption="頻率" Width="150">
-                                                    <EditItemTemplate>
-                                                        <div class="frequency-container">
-                                                            <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" Width="60px" MinValue="1" MaxValue="100" 
-                                                                Value='<%# GetFrequencyCount(Eval("Frequency")) %>' />
-                                                            次:
-                                                            <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" Width="60px" MinValue="1" MaxValue="100"
-                                                                Value='<%# GetFrequencyUnitCount(Eval("Frequency")) %>' />
-                                                            <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" Width="60px" 
-                                                                Value='<%# GetFrequencyUnit(Eval("Frequency")) %>'>
-                                                                <Items>
-                                                                    <dx:ListEditItem Text="天" Value="天" />
-                                                                    <dx:ListEditItem Text="週" Value="週" />
-                                                                </Items>
-                                                            </dx:ASPxComboBox>
-                                                        </div>
-                                                    </EditItemTemplate>
-                                                </dx:GridViewDataTextColumn>
-                                            </Columns>
-                                            <SettingsText EmptyDataRow="無資料" />
-                                        </dx:ASPxGridView>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                        </Items>
-                    </dx:LayoutGroup>
-                </Items>
-            </dx:ASPxFormLayout>
-            
-            <dx:ASPxPopupControl ID="popupEditForm" runat="server" HeaderText="新增記錄" 
-                PopupHorizontalAlign="WindowCenter" PopupVerticalAlign="WindowCenter" 
-                Width="500px" Height="350px" Modal="true">
-                <ContentCollection>
-                    <dx:PopupControlContentControl>
-                        <dx:ASPxFormLayout ID="editFormLayout" runat="server" Width="100%">
-                            <Items>
-                                <dx:LayoutItem Caption="Chp_Grp">
-                                    <LayoutItemNestedControlCollection>
-                                        <dx:LayoutItemNestedControlContainer>
-                                            <dx:ASPxComboBox ID="cmbChpGrp" runat="server" Width="100%" 
-                                                ValueType="System.String" IncrementalFilteringMode="Contains"
-                                                TextFormatString="{0}">
-                                                <ValidationSettings RequiredField-IsRequired="true" />
-                                            </dx:ASPxComboBox>
-                                        </dx:LayoutItemNestedControlContainer>
-                                    </LayoutItemNestedControlCollection>
-                                </dx:LayoutItem>
-                                <dx:LayoutItem Caption="Layer">
-                                    <LayoutItemNestedControlCollection>
-                                        <dx:LayoutItemNestedControlContainer>
-                                            <dx:ASPxTextBox ID="txtLayer" runat="server" Width="100%">
-                                                <ValidationSettings RequiredField-IsRequired="true" />
-                                            </dx:ASPxTextBox>
-                                        </dx:LayoutItemNestedControlContainer>
-                                    </LayoutItemNestedControlCollection>
-                                </dx:LayoutItem>
-                                <dx:LayoutItem Caption="Ope_No">
-                                    <LayoutItemNestedControlCollection>
-                                        <dx:LayoutItemNestedControlContainer>
-                                            <dx:ASPxTextBox ID="txtOpeNo" runat="server" Width="100%">
-                                                <ValidationSettings RequiredField-IsRequired="true" />
-                                            </dx:ASPxTextBox>
-                                        </dx:LayoutItemNestedControlContainer>
-                                    </LayoutItemNestedControlCollection>
-                                </dx:LayoutItem>
-                                <dx:LayoutItem Caption="PR">
-                                    <LayoutItemNestedControlCollection>
-                                        <dx:LayoutItemNestedControlContainer>
-                                            <dx:ASPxTextBox ID="txtPR" runat="server" Width="100%">
-                                                <ValidationSettings RequiredField-IsRequired="true" />
-                                            </dx:ASPxTextBox>
-                                        </dx:LayoutItemNestedControlContainer>
-                                    </LayoutItemNestedControlCollection>
-                                </dx:LayoutItem>
-                                <dx:LayoutItem Caption="頻率">
-                                    <LayoutItemNestedControlCollection>
-                                        <dx:LayoutItemNestedControlContainer>
-                                            <div class="frequency-container">
-                                                <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" Width="60px" MinValue="1" MaxValue="100" Value="1" />
-                                                次:
-                                                <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" Width="60px" MinValue="1" MaxValue="100" Value="1" />
-                                                <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" Width="60px" Value="天">
-                                                    <Items>
-                                                        <dx:ListEditItem Text="天" Value="天" />
-                                                        <dx:ListEditItem Text="週" Value="週" />
-                                                    </Items>
-                                                </dx:ASPxComboBox>
-                                            </div>
-                                        </dx:LayoutItemNestedControlContainer>
-                                    </LayoutItemNestedControlCollection>
-                                </dx:LayoutItem>
-                                <dx:LayoutItem ShowCaption="False">
-                                    <LayoutItemNestedControlCollection>
-                                        <dx:LayoutItemNestedControlContainer>
-                                            <div style="text-align: center; margin-top: 15px;">
-                                                <dx:ASPxButton ID="btnSubmit" runat="server" Text="確定" Width="80px" AutoPostBack="false">
-                                                    <ClientSideEvents Click="function(s, e) { 
-                                                        if(ASPxClientEdit.ValidateGroup('FormValidation')) {
-                                                            AddNewRecord();
-                                                            popupEditForm.Hide();
-                                                        }
-                                                    }" />
-                                                </dx:ASPxButton>
-                                                <dx:ASPxButton ID="btnCancel" runat="server" Text="取消" Width="80px" AutoPostBack="false">
-                                                    <ClientSideEvents Click="function(s, e) { popupEditForm.Hide(); }" />
-                                                </dx:ASPxButton>
-                                            </div>
-                                        </dx:LayoutItemNestedControlContainer>
-                                    </LayoutItemNestedControlCollection>
-                                </dx:LayoutItem>
-                            </Items>
-                            <SettingsItemCaptions Location="Top" />
-                        </dx:ASPxFormLayout>
-                    </dx:PopupControlContentControl>
-                </ContentCollection>
-            </dx:ASPxPopupControl>
-        </div>
-        
-        <dx:ASPxHiddenField ID="hfEditedData" runat="server" ClientInstanceName="hfEditedData" />
-        
-        <script type="text/javascript">
-            function AddNewRecord() {
-                var chpGrp = cmbChpGrp.GetValue();
-                var layer = txtLayer.GetValue();
-                var opeNo = txtOpeNo.GetValue();
-                var pr = txtPR.GetValue();
-                var freqCount = txtFreqCount.GetValue();
-                var freqUnitCount = txtFreqUnitCount.GetValue();
-                var freqUnit = cmbFreqUnit.GetValue();
-                
-                var frequency = freqCount + '次:' + freqUnitCount + freqUnit;
-                
-                gridToolRank.AddNewRow();
-                var keys = gridToolRank.GetRowKey(gridToolRank.GetFocusedRowIndex());
-                
-                gridToolRank.batchEditApi.SetCellValue(keys, "ChpGrp", chpGrp);
-                gridToolRank.batchEditApi.SetCellValue(keys, "Layer", layer);
-                gridToolRank.batchEditApi.SetCellValue(keys, "OpeNo", opeNo);
-                gridToolRank.batchEditApi.SetCellValue(keys, "PR", pr);
-                gridToolRank.batchEditApi.SetCellValue(keys, "Frequency", frequency);
-                
-                // 清除表單
-                txtLayer.SetValue('');
-                txtOpeNo.SetValue('');
-                txtPR.SetValue('');
-                txtFreqCount.SetValue(1);
-                txtFreqUnitCount.SetValue(1);
-                cmbFreqUnit.SetValue('天');
-            }
-        </script>
-    </form>
-</body>
-</html>
-
-// Default.aspx.cs - 代碼隱藏文件
-using System;
-using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web.UI;
 using DevExpress.Web;
+using Oracle.ManagedDataAccess.Client;
 using Newtonsoft.Json;
-using SpcToolRankWeb.Data;
-using SpcToolRankWeb.Models;
 
-namespace SpcToolRankWeb
+namespace SpcToolManagement
 {
-    public partial class Default : Page
+    public partial class SpcToolRank : System.Web.UI.Page
     {
-        private OracleDataAccess dataAccess = new OracleDataAccess();
-        private List<SpcToolRank> toolRanks = new List<SpcToolRank>();
+        private string _connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
         
         protected void Page_Load(object sender, EventArgs e)
         {
             if (!IsPostBack)
             {
-                LoadData();
-                LoadChpGrpList();
+                LoadSpcToolRankData();
             }
-            else
+            
+            // Register client-side script for handling custom button events
+            gridSpcToolRank.ClientSideEvents.CustomButtonClick = "function(s, e) { if(e.buttonID === 'btnAdd') { showAddPopup(true); } }";
+            gridSpcToolRank.ClientSideEvents.RowInserting = "function(s, e) { TrackChangedRow(e.visibleIndex, 'Insert', e.newValues); }";
+            gridSpcToolRank.ClientSideEvents.RowUpdating = "function(s, e) { TrackChangedRow(e.visibleIndex, 'Update', e.newValues); }";
+            gridSpcToolRank.ClientSideEvents.RowDeleting = "function(s, e) { TrackChangedRow(e.visibleIndex, 'Delete', null); }";
+            
+            // Register script for tracking changes
+            string script = @"
+                if(!gridSpcToolRank.cpChangedRows) gridSpcToolRank.cpChangedRows = [];
+                
+                function TrackChangedRow(visibleIndex, operation, values) {
+                    var keyValue = gridSpcToolRank.GetRowKey(visibleIndex);
+                    
+                    // Find if this row is already in the changed rows array
+                    var existingIndex = -1;
+                    for(var i = 0; i < gridSpcToolRank.cpChangedRows.length; i++) {
+                        if(gridSpcToolRank.cpChangedRows[i].KeyValue === keyValue) {
+                            existingIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    // Handle frequency value for updated rows
+                    if(operation === 'Update' && values) {
+                        var frequencyColumn = gridSpcToolRank.GetColumnByField('FREQUENCY');
+                        var columnIndex = gridSpcToolRank.GetColumnIndexByField('FREQUENCY');
+                        
+                        if(columnIndex >= 0 && frequencyColumn.fieldName === 'FREQUENCY') {
+                            var editor = gridSpcToolRank.GetEditor(columnIndex);
+                            if(editor) {
+                                var countCtrl = ASPxClientControl.GetControlCollection().GetByName('seFrequencyCount');
+                                var typeCtrl = ASPxClientControl.GetControlCollection().GetByName('cboFrequencyType');
+                                var valueCtrl = ASPxClientControl.GetControlCollection().GetByName('seFrequencyValue');
+                                
+                                if(countCtrl && typeCtrl && valueCtrl) {
+                                    values[columnIndex] = countCtrl.GetValue() + '次:' + valueCtrl.GetValue() + typeCtrl.GetValue();
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Create change record
+                    var changeRecord = {
+                        KeyValue: keyValue,
+                        Operation: operation,
+                        Values: values
+                    };
+                    
+                    // Add or update in changed rows array
+                    if(existingIndex >= 0) {
+                        gridSpcToolRank.cpChangedRows[existingIndex] = changeRecord;
+                    } else {
+                        gridSpcToolRank.cpChangedRows.push(changeRecord);
+                    }
+                }
+            ";
+            
+            ScriptManager.RegisterClientScriptBlock(this, GetType(), "TrackChangesScript", script, true);
+        }
+        
+        protected void LoadSpcToolRankData()
+        {
+            using (OracleConnection conn = new OracleConnection(_connectionString))
             {
-                // 從Session中恢復數據
-                if (Session["ToolRanks"] != null)
+                try
                 {
-                    toolRanks = (List<SpcToolRank>)Session["ToolRanks"];
+                    conn.Open();
+                    OracleCommand cmd = new OracleCommand("SELECT ID, CHP_GRP, LAYER, OPE_NO, PR, FREQUENCY FROM SPC_TOOL_RANK ORDER BY CHP_GRP, LAYER, OPE_NO", conn);
+                    OracleDataAdapter adapter = new OracleDataAdapter(cmd);
+                    DataTable dt = new DataTable();
+                    adapter.Fill(dt);
+                    
+                    gridSpcToolRank.DataSource = dt;
+                    gridSpcToolRank.DataBind();
+                    
+                    // Get all CHP_GRP values for client-side use
+                    cmd = new OracleCommand("SELECT DISTINCT CHP_GRP FROM FLOW_MAPPING ORDER BY CHP_GRP", conn);
+                    DataTable dtChpGrp = new DataTable();
+                    adapter = new OracleDataAdapter(cmd);
+                    adapter.Fill(dtChpGrp);
+                    
+                    List<object> chpGrpItems = new List<object>();
+                    foreach (DataRow row in dtChpGrp.Rows)
+                    {
+                        chpGrpItems.Add(new { text = row["CHP_GRP"].ToString(), value = row["CHP_GRP"].ToString() });
+                    }
+                    
+                    string chpGrpJson = JsonConvert.SerializeObject(chpGrpItems);
+                    gridSpcToolRank.JSProperties["cpChpGrpItems"] = chpGrpJson;
+                }
+                catch (Exception ex)
+                {
+                    // Handle exception
+                    ScriptManager.RegisterClientScriptBlock(this, GetType(), "AlertError", 
+                        $"alert('資料載入錯誤: {ex.Message}');", true);
                 }
             }
         }
         
-        private void LoadData(string chpGrpFilter = "")
+        protected void gridSpcToolRank_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
         {
-            toolRanks = dataAccess.GetSpcToolRanks(chpGrpFilter);
-            Session["ToolRanks"] = toolRanks;
-            gridToolRank.DataSource = toolRanks;
-            gridToolRank.DataBind();
+            // Prevent the default database insertion, we will handle this in batch
+            e.Cancel = true;
+            
+            // Generate a temporary ID for the new row
+            e.NewValues["ID"] = "NEW_" + Guid.NewGuid().ToString().Replace("-", "").Substring(0, 10);
+            
+            // Add the row to the grid
+            gridSpcToolRank.JSProperties["cpResult"] = "RowInserted";
         }
         
-        private void LoadChpGrpList()
+        protected void gridSpcToolRank_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
         {
-            var chpGrpList = dataAccess.GetChpGrpList();
-            cmbChpGrp.DataSource = chpGrpList;
-            cmbChpGrp.DataBind();
+            // Prevent the default database update, we will handle this in batch
+            e.Cancel = true;
+            gridSpcToolRank.JSProperties["cpResult"] = "RowUpdated";
         }
         
-        protected void btnSearch_Click(object sender, EventArgs e)
+        protected void gridSpcToolRank_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
         {
-            string chpGrpFilter = txtSearch.Text.Trim();
-            LoadData(chpGrpFilter);
+            // Prevent the default database deletion, we will handle this in batch
+            e.Cancel = true;
+            gridSpcToolRank.JSProperties["cpResult"] = "RowDeleted";
         }
         
-        protected void btnSave_Click(object sender, EventArgs e)
+        protected void gridSpcToolRank_CustomButtonCallback(object sender, ASPxGridViewCustomButtonCallbackEventArgs e)
+        {
+            // Handle custom button callbacks
+            string result = "Error";
+            
+            if (e.ButtonID == "btnAdd")
+            {
+                result = "ShowAddPopup";
+            }
+            
+            gridSpcToolRank.JSProperties["cpCustomButtonResult"] = result;
+        }
+        
+        protected void callbackSaveAll_Callback(object source, DevExpress.Web.CallbackEventArgs e)
         {
             try
             {
-                List<SpcToolRank> changedItems = toolRanks.FindAll(t => t.State != SpcToolRank.DataState.Unchanged);
+                string changedRowsJson = hfEditedRows.Get("ChangedRows").ToString();
+                List<ChangeRecord> changedRows = JsonConvert.DeserializeObject<List<ChangeRecord>>(changedRowsJson);
                 
-                if (changedItems.Count > 0)
+                if (changedRows == null || changedRows.Count == 0)
                 {
-                    dataAccess.SaveChanges(changedItems);
-                    
-                    // 重新加載數據
-                    string chpGrpFilter = txtSearch.Text.Trim();
-                    LoadData(chpGrpFilter);
-                    
-                    ScriptManager.RegisterClientScriptBlock(this, GetType(), "saveSuccess", 
-                        "alert('數據保存成功！');", true);
+                    e.Result = "NoChanges";
+                    return;
                 }
-                else
+                
+                using (OracleConnection conn = new OracleConnection(_connectionString))
                 {
-                    ScriptManager.RegisterClientScriptBlock(this, GetType(), "noChanges", 
-                        "alert('沒有需要保存的變更。');", true);
+                    conn.Open();
+                    OracleTransaction transaction = conn.BeginTransaction();
+                    
+                    try
+                    {
+                        foreach (var record in changedRows)
+                        {
+                            if (record.Operation == "Insert")
+                            {
+                                InsertRecord(conn, transaction, record);
+                            }
+                            else if (record.Operation == "Update")
+                            {
+                                UpdateRecord(conn, transaction, record);
+                            }
+                            else if (record.Operation == "Delete")
+                            {
+                                DeleteRecord(conn, transaction, record);
+                            }
+                        }
+                        
+                        transaction.Commit();
+                        e.Result = "Success";
+                    }
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback();
+                        e.Result = ex.Message;
+                    }
                 }
             }
             catch (Exception ex)
             {
-                ScriptManager.RegisterClientScriptBlock(this, GetType(), "saveError", 
-                    $"alert('保存失敗: {ex.Message}');", true);
+                e.Result = ex.Message;
             }
         }
         
-        protected void gridToolRank_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+        private void InsertRecord(OracleConnection conn, OracleTransaction transaction, ChangeRecord record)
         {
-            var newItem = new SpcToolRank
-            {
-                ChpGrp = e.NewValues["ChpGrp"]?.ToString(),
-                Layer = e.NewValues["Layer"]?.ToString(),
-                OpeNo = e.NewValues["OpeNo"]?.ToString(),
-                PR = e.NewValues["PR"]?.ToString(),
-                Frequency = e.NewValues["Frequency"]?.ToString(),
-                State = SpcToolRank.DataState.Added
-            };
+            Dictionary<string, object> values = GetValuesAsDictionary(record.Values);
             
-            toolRanks.Add(newItem);
-            Session["ToolRanks"] = toolRanks;
+            // Generate a new Oracle sequence ID
+            OracleCommand cmdSeq = new OracleCommand("SELECT SPC_TOOL_RANK_SEQ.NEXTVAL FROM DUAL", conn, transaction);
+            decimal newId = Convert.ToDecimal(cmdSeq.ExecuteScalar());
             
-            e.Cancel = true;
-            gridToolRank.CancelEdit();
-            gridToolRank.DataSource = toolRanks;
-            gridToolRank.DataBind();
+            string sql = @"
+                INSERT INTO SPC_TOOL_RANK 
+                (ID, CHP_GRP, LAYER, OPE_NO, PR, FREQUENCY) 
+                VALUES (:ID, :CHP_GRP, :LAYER, :OPE_NO, :PR, :FREQUENCY)";
+            
+            OracleCommand cmd = new OracleCommand(sql, conn, transaction);
+            cmd.Parameters.Add(":ID", OracleDbType.Decimal).Value = newId;
+            cmd.Parameters.Add(":CHP_GRP", OracleDbType.Varchar2).Value = values.ContainsKey("CHP_GRP") ? values["CHP_GRP"] : DBNull.Value;
+            cmd.Parameters.Add(":LAYER", OracleDbType.Varchar2).Value = values.ContainsKey("LAYER") ? values["LAYER"] : DBNull.Value;
+            cmd.Parameters.Add(":OPE_NO", OracleDbType.Varchar2).Value = values.ContainsKey("OPE_NO") ? values["OPE_NO"] : DBNull.Value;
+            cmd.Parameters.Add(":PR", OracleDbType.Varchar2).Value = values.ContainsKey("PR") ? values["PR"] : DBNull.Value;
+            cmd.Parameters.Add(":FREQUENCY", OracleDbType.Varchar2).Value = values.ContainsKey("FREQUENCY") ? values["FREQUENCY"] : DBNull.Value;
+            
+            cmd.ExecuteNonQuery();
         }
         
-        protected void gridToolRank_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+        private void UpdateRecord(OracleConnection conn, OracleTransaction transaction, ChangeRecord record)
         {
-            var index = gridToolRank.FindVisibleIndexByKeyValue(e.Keys["ChpGrp"]);
-            if (index >= 0 && index < toolRanks.Count)
+            Dictionary<string, object> values = GetValuesAsDictionary(record.Values);
+            
+            string sql = @"
+                UPDATE SPC_TOOL_RANK 
+                SET CHP_GRP = :CHP_GRP,
+                    LAYER = :LAYER,
+                    OPE_NO = :OPE_NO,
+                    PR = :PR,
+                    FREQUENCY = :FREQUENCY
+                WHERE ID = :ID";
+            
+            OracleCommand cmd = new OracleCommand(sql, conn, transaction);
+            cmd.Parameters.Add(":CHP_GRP", OracleDbType.Varchar2).Value = values.ContainsKey("CHP_GRP") ? values["CHP_GRP"] : DBNull.Value;
+            cmd.Parameters.Add(":LAYER", OracleDbType.Varchar2).Value = values.ContainsKey("LAYER") ? values["LAYER"] : DBNull.Value;
+            cmd.Parameters.Add(":OPE_NO", OracleDbType.Varchar2).Value = values.ContainsKey("OPE_NO") ? values["OPE_NO"] : DBNull.Value;
+            cmd.Parameters.Add(":PR", OracleDbType.Varchar2).Value = values.ContainsKey("PR") ? values["PR"] : DBNull.Value;
+            cmd.Parameters.Add(":FREQUENCY", OracleDbType.Varchar2).Value = values.ContainsKey("FREQUENCY") ? values["FREQUENCY"] : DBNull.Value;
+            cmd.Parameters.Add(":ID", OracleDbType.Decimal).Value = Convert.ToDecimal(record.KeyValue);
+            
+            cmd.ExecuteNonQuery();
+        }
+        
+        private void DeleteRecord(OracleConnection conn, OracleTransaction transaction, ChangeRecord record)
+        {
+            string sql = "DELETE FROM SPC_TOOL_RANK WHERE ID = :ID";
+            
+            OracleCommand cmd = new OracleCommand(sql, conn, transaction);
+            cmd.Parameters.Add(":ID", OracleDbType.Decimal).Value = Convert.ToDecimal(record.KeyValue);
+            
+            cmd.ExecuteNonQuery();
+        }
+        
+        private Dictionary<string, object> GetValuesAsDictionary(object values)
+        {
+            if (values == null)
+                return new Dictionary<string, object>();
+                
+            return JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                JsonConvert.SerializeObject(values));
+        }
+        
+        protected int GetFrequencyCount(object frequencyValue)
+        {
+            if (frequencyValue == null || string.IsNullOrEmpty(frequencyValue.ToString()))
+                return 1;
+                
+            string frequency = frequencyValue.ToString();
+            Match match = Regex.Match(frequency, @"(\d+)次");
+            
+            if (match.Success && match.Groups.Count > 1)
             {
-                toolRanks[index].Layer = e.NewValues["Layer"]?.ToString();
-                toolRanks[index].OpeNo = e.NewValues["OpeNo"]?.ToString();
-                toolRanks[index].PR = e.NewValues["PR"]?.ToString();
-                
-                // 處理頻率
-                ASPxSpinEdit freqCount = (ASPxSpinEdit)gridToolRank.FindEditRowCellTemplateControl(
-                    (GridViewDataTextColumn)gridToolRank.Columns["Frequency"], "txtFreqCount");
-                ASPxSpinEdit freqUnitCount = (ASPxSpinEdit)gridToolRank.FindEditRowCellTemplateControl(
-                    (GridViewDataTextColumn)gridToolRank.Columns["Frequency"], "txtFreqUnitCount");
-                ASPxComboBox freqUnit = (ASPxComboBox)gridToolRank.FindEditRowCellTemplateControl(
-                    (GridViewDataTextColumn)gridToolRank.Columns["Frequency"], "cmbFreqUnit");
-                
-                if (freqCount != null && freqUnitCount != null && freqUnit != null)
-                {
-                    string frequency = $"{freqCount.Value}次:{freqUnitCount.Value}{freqUnit.Value}";
-                    toolRanks[index].Frequency = frequency;
-                }
-                
-                if (toolRanks[index].State == SpcToolRank.DataState.Unchanged)
-                {
-                    toolRanks[index].State = SpcToolRank.DataState.Modified;
-                }
-                
-                Session["ToolRanks"] = toolRanks;
+                return Convert.ToInt32(match.Groups[1].Value);
             }
             
-            e.Cancel = true;
-            gridToolRank.CancelEdit();
-            gridToolRank.DataSource = toolRanks;
-            gridToolRank.DataBind();
+            return 1;
         }
         
-        protected void gridToolRank_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
+        protected string GetFrequencyType(object frequencyValue)
         {
-            var index = gridToolRank.FindVisibleIndexByKeyValue(e.Keys["ChpGrp"]);
-            if (index >= 0 && index < toolRanks.Count)
-            {
-                toolRanks[index].State = SpcToolRank.DataState.Deleted;
-                Session["ToolRanks"] = toolRanks;
-            }
+            if (frequencyValue == null || string.IsNullOrEmpty(frequencyValue.ToString()))
+                return "天";
+                
+            string frequency = frequencyValue.ToString();
             
-            e.Cancel = true;
-            gridToolRank.DataSource = toolRanks.FindAll(t => t.State != SpcToolRank.DataState.Deleted);
-            gridToolRank.DataBind();
-        }
-        
-        protected void gridToolRank_CustomColumnDisplayText(object sender, ASPxGridViewColumnDisplayTextEventArgs e)
-        {
-            if (e.Column.FieldName == "Frequency")
-            {
-                string frequency = e.Value?.ToString();
-                if (!string.IsNullOrEmpty(frequency))
-                {
-                    // 可以根據需要自定義顯示格式
-                    e.DisplayText = frequency;
-                }
-            }
-        }
-        
-        // 頻率解析輔助方法
-        protected int GetFrequencyCount(object value)
-        {
-            string frequencyStr = value?.ToString();
-            return FrequencySettings.Parse(frequencyStr).Count;
-        }
-        
-        protected int GetFrequencyUnitCount(object value)
-        {
-            string frequencyStr = value?.ToString();
-            return FrequencySettings.Parse(frequencyStr).UnitCount;
-        }
-        
-        protected string GetFrequencyUnit(object value)
-        {
-            string frequencyStr = value?.ToString();
-            return FrequencySettings.Parse(frequencyStr).Unit;
-        }
-    }
-}
-
-// Web.config 配置文件
-<?xml version
+            if (frequency.Contains
