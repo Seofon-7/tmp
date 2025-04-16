@@ -1,0 +1,109 @@
+<%@ Page Language="C#" AutoEventWireup="true" CodeFile="ToolRankManager.aspx.cs" Inherits="ToolRankManager" %>
+<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>Tool Rank Manager</title>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <dx:ASPxCallbackPanel ID="panelMain" runat="server">
+            <PanelCollection>
+                <dx:PanelContent>
+                    <dx:ASPxGridView ID="grid" runat="server" KeyFieldName="ID" AutoGenerateColumns="False"
+                        OnNeedDataSource="grid_NeedDataSource"
+                        OnRowInserting="grid_RowInserting"
+                        OnRowUpdating="grid_RowUpdating"
+                        OnRowDeleting="grid_RowDeleting"
+                        OnCustomCallback="grid_CustomCallback"
+                        OnCustomButtonCallback="grid_CustomButtonCallback">
+                        <Columns>
+                            <dx:GridViewCommandColumn ShowEditButton="True" ShowDeleteButton="True">
+                                <CustomButtons>
+                                    <dx:GridViewCommandColumnCustomButton ID="CustomAdd" Text="Add" />
+                                </CustomButtons>
+                            </dx:GridViewCommandColumn>
+
+                            <dx:GridViewDataTextColumn FieldName="chp_grp" Caption="CHP Group">
+                                <Settings AutoFilterCondition="Contains" />
+                            </dx:GridViewDataTextColumn>
+
+                            <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer">
+                                <Settings AutoFilterCondition="Contains" />
+                            </dx:GridViewDataTextColumn>
+
+                            <dx:GridViewDataTextColumn FieldName="ope_no" Caption="Operation">
+                                <Settings AutoFilterCondition="Contains" />
+                            </dx:GridViewDataTextColumn>
+
+                            <dx:GridViewDataTextColumn FieldName="PR" Caption="PR">
+                                <Settings AutoFilterCondition="Contains" />
+                            </dx:GridViewDataTextColumn>
+
+                            <dx:GridViewDataTextColumn FieldName="frequency" Caption="Frequency">
+                                <EditItemTemplate>
+                                    次數: <dx:ASPxTextBox ID="txtTimes" runat="server" Width="30px" />
+                                    <br />
+                                    天/週後: <dx:ASPxTextBox ID="txtValue" runat="server" Width="30px" />
+                                    <dx:ASPxComboBox ID="ddlUnit" runat="server">
+                                        <Items>
+                                            <dx:ListEditItem Text="天" Value="天" />
+                                            <dx:ListEditItem Text="週" Value="週" />
+                                        </Items>
+                                    </dx:ASPxComboBox>
+                                </EditItemTemplate>
+                            </dx:GridViewDataTextColumn>
+                        </Columns>
+
+                        <SettingsEditing Mode="Inline" NewItemRowPosition="Bottom" />
+                        <SettingsPager PageSize="20" />
+                        <Settings ShowFilterRow="True" ShowFilterRowMenu="True" />
+
+                        <Templates>
+                            <Toolbar>
+                                <dx:ASPxGridViewToolbarItem Text="新增" CommandName="Custom" ToolTip="新增一筆" Name="btnAddPopup" />
+                                <dx:ASPxGridViewToolbarItem Text="儲存" CommandName="Custom" Name="btnSaveAll" />
+                                <dx:ASPxGridViewToolbarItem Name="txtSearch" Template="SearchBoxTemplate" />
+                                <dx:ASPxGridViewToolbarItem Name="ddlLayer" Template="LayerDropdownTemplate" />
+                            </Toolbar>
+                        </Templates>
+                    </dx:ASPxGridView>
+
+                    <dx:ASPxPopupControl ID="popupAdd" runat="server" HeaderText="新增資料" PopupHorizontalAlign="WindowCenter" PopupVerticalAlign="WindowCenter" Width="300px">
+                        <ContentCollection>
+                            <dx:PopupControlContentControl>
+                                <dx:ASPxComboBox ID="ddlChpGrp" runat="server" Width="100%" DropDownStyle="DropDown">
+                                </dx:ASPxComboBox>
+                                <br /><br />
+                                <dx:ASPxButton ID="btnInsert" runat="server" Text="新增" OnClick="btnInsert_Click" />
+                            </dx:PopupControlContentControl>
+                        </ContentCollection>
+                    </dx:ASPxPopupControl>
+
+                    <dx:ASPxDropDownEdit ID="ddlLayerFilter" runat="server" Width="120px" AutoPostBack="True">
+                    </dx:ASPxDropDownEdit>
+                </dx:PanelContent>
+            </PanelCollection>
+        </dx:ASPxCallbackPanel>
+    </form>
+
+    <script type="text/javascript">
+        function OnToolbarItemClick(s, e) {
+            if (e.item.name === "btnAddPopup") {
+                popupAdd.Show();
+            } else if (e.item.name === "btnSaveAll") {
+                __doPostBack('<%= btnSaveAll.UniqueID %>', '');
+            }
+        }
+
+        function OnLayerSelected(value) {
+            grid.PerformCallback("layer:" + value);
+        }
+
+        function OnSearchKeywordChanged(value) {
+            grid.PerformCallback("filter:" + value);
+        }
+    </script>
+</body>
+</html>
