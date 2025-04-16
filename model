@@ -45,6 +45,10 @@
                 OnRowDeleting="gridSpcToolRank_RowDeleting"
                 OnCustomButtonCallback="gridSpcToolRank_CustomButtonCallback">
                 <Settings ShowFilterRow="true" ShowGroupPanel="false" />
+                <SettingsSearchPanel Visible="true" />
+                <SettingsFilterControl ViewMode="VisualAndText" AllowHierarchicalColumns="true" />
+                <SettingsAdaptivity AdaptivityMode="HideDataCells" />
+                <SettingsDataSecurity AllowDelete="true" AllowEdit="true" AllowInsert="true" />
                 <SettingsBehavior AllowFocusedRow="true" ConfirmDelete="true" />
                 <SettingsPager PageSize="20" />
                 <SettingsEditing Mode="Inline" />
@@ -92,30 +96,35 @@
                             <ClientSideEvents Init="function(s, e) { s.AddItems(s.GetGridView().cpChpGrpItems); }" />
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesComboBox>
+                        <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
                     </dx:GridViewDataComboBoxColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="LAYER" Caption="LAYER" Width="100px">
                         <PropertiesTextEdit>
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
+                        <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="OPE_NO" Caption="OPE_NO" Width="100px">
                         <PropertiesTextEdit>
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
+                        <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="PR" Caption="PR" Width="100px">
                         <PropertiesTextEdit>
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
+                        <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="FREQUENCY" Caption="頻率" Width="150px">
                         <PropertiesTextEdit>
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
+                        <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
                         <EditItemTemplate>
                             <div class="frequency-container">
                                 <div>
