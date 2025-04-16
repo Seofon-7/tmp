@@ -107,3 +107,102 @@
     </script>
 </body>
 </html>
+
+------------
+
+<%@ Page Language="C#" AutoEventWireup="true" CodeFile="ToolRankManager.aspx.cs" Inherits="ToolRankManager" %>
+<%@ Register Assembly="DevExpress.Web.ASPxGridView, Version=19.2.0.0, Culture=neutral, PublicKeyToken=2baf4f3d0e89ddf2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head runat="server">
+    <meta charset="utf-8" />
+    <title>Tool Rank Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/devextreme@21.2.5/dist/css/dx.common.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/devextreme@21.2.5/dist/css/dx.light.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/devextreme@21.2.5/dist/js/dx.all.js"></script>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <div>
+            <!-- Toolbar -->
+            <dx:ASPxToolbar ID="toolbar" runat="server">
+                <Items>
+                    <dx:ToolbarItem Text="新增" OnClick="btnInsert_Click" />
+                    <dx:ToolbarItem Text="儲存" OnClick="btnSaveAll_Click" />
+                    <dx:ToolbarItem>
+                        <ItemTemplate>
+                            <asp:DropDownList ID="ddlLayerFilter" runat="server" AutoPostBack="true">
+                                <asp:ListItem Text="All" Value="All" />
+                            </asp:DropDownList>
+                        </ItemTemplate>
+                    </dx:ToolbarItem>
+                    <dx:ToolbarItem>
+                        <ItemTemplate>
+                            <asp:TextBox ID="txtSearchChpGrp" runat="server" OnTextChanged="txtSearchChpGrp_TextChanged" AutoPostBack="true" />
+                        </ItemTemplate>
+                    </dx:ToolbarItem>
+                </Items>
+            </dx:ASPxToolbar>
+
+            <br /><br />
+
+            <!-- Grid -->
+            <dx:ASPxGridView ID="grid" runat="server" ClientInstanceName="grid" OnRowInserting="grid_RowInserting" 
+                             OnRowUpdating="grid_RowUpdating" OnRowDeleting="grid_RowDeleting" OnNeedDataSource="grid_NeedDataSource" 
+                             OnCustomCallback="grid_CustomCallback" OnCustomButtonCallback="grid_CustomButtonCallback">
+                <Columns>
+                    <dx:GridViewDataTextColumn FieldName="chp_grp" Caption="CHP群組" SortIndex="0">
+                        <PropertiesTextEdit>
+                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="CHP群組為必填" />
+                        </PropertiesTextEdit>
+                    </dx:GridViewDataTextColumn>
+
+                    <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer">
+                        <PropertiesTextEdit>
+                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="Layer為必填" />
+                        </PropertiesTextEdit>
+                    </dx:GridViewDataTextColumn>
+
+                    <dx:GridViewDataTextColumn FieldName="ope_no" Caption="OPE No." >
+                        <PropertiesTextEdit>
+                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="OPE No.為必填" />
+                        </PropertiesTextEdit>
+                    </dx:GridViewDataTextColumn>
+
+                    <dx:GridViewDataTextColumn FieldName="PR" Caption="PR">
+                        <PropertiesTextEdit>
+                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="PR為必填" />
+                        </PropertiesTextEdit>
+                    </dx:GridViewDataTextColumn>
+
+                    <dx:GridViewDataTextColumn FieldName="frequency" Caption="頻率">
+                        <PropertiesTextEdit>
+                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="頻率為必填" />
+                        </PropertiesTextEdit>
+                    </dx:GridViewDataTextColumn>
+
+                    <dx:GridViewCommandColumn ShowEditButton="True" ShowDeleteButton="True" ShowNewButton="True">
+                    </dx:GridViewCommandColumn>
+                </Columns>
+
+                <SettingsEditing Mode="Inline" />
+                <SettingsPager PageSize="20" />
+            </dx:ASPxGridView>
+
+        </div>
+    </form>
+
+    <script type="text/javascript">
+        // 處理儲存後端錯誤
+        function OnEndCallback(s, e) {
+            var error = s.cpError;
+            if (error) {
+                alert(error); // 或顯示在自訂區域
+                s.cpError = null;
+            }
+        }
+    </script>
+</body>
+</html>
+
