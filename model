@@ -1,17 +1,27 @@
-I'll help you create a .NET 4.7.2 web project with DevExpress 19.2 and Oracle 11. Let me break down the solution for each of your requirements.
-
-## Overall Architecture
-
-This project requires:
-1. A data grid with inline editing
-2. A toolbar with add/save buttons and search functionality
-3. Data retrieval from Oracle database
-4. Batch updates to database
-5. Custom frequency input format
-6. Command buttons in the grid
-
-Let me create the necessary files for this project:​​​​​​​​​​​​​​​​
-
-​​​​​​​​​​​​​​​​
-
-​​​​​​​​​​​​​​​​
+<dx:ASPxGridView ID="grid" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
+    OnCellEditorInitialize="grid_CellEditorInitialize"
+    OnRowUpdating="grid_RowUpdating"
+    OnRowDeleting="grid_RowDeleting"
+    OnRowInserting="grid_RowInserting"
+    OnPageIndexChanged="grid_PageIndexChanged"
+    SettingsPager-PageSize="20"
+    Settings-EditingMode="Inline">
+    <ClientSideEvents RowDeleting="function(s, e) {
+        if (!confirm('確定要刪除這筆資料嗎？')) {
+            e.cancel = true;
+        }
+    }" />
+    <SettingsEditing Mode="Inline" />
+    <Columns>
+        <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" />
+        <dx:GridViewDataTextColumn FieldName="chp_grp" Caption="Chp Grp" />
+        <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer" />
+        <dx:GridViewDataTextColumn FieldName="ope_no" Caption="OPE No" />
+        <dx:GridViewDataTextColumn FieldName="PR" Caption="PR" />
+        <dx:GridViewDataTextColumn FieldName="frequency" Caption="頻率">
+            <EditItemTemplate>
+                <uc1:FrequencyEditor ID="FrequencyEditor1" runat="server" />
+            </EditItemTemplate>
+        </dx:GridViewDataTextColumn>
+    </Columns>
+</dx:ASPxGridView>
