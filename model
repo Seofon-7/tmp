@@ -1,27 +1,46 @@
-<dx:ASPxGridView ID="grid" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
-    OnCellEditorInitialize="grid_CellEditorInitialize"
-    OnRowUpdating="grid_RowUpdating"
-    OnRowDeleting="grid_RowDeleting"
-    OnRowInserting="grid_RowInserting"
-    OnPageIndexChanged="grid_PageIndexChanged"
-    SettingsPager-PageSize="20"
-    Settings-EditingMode="Inline">
-    <ClientSideEvents RowDeleting="function(s, e) {
-        if (!confirm('確定要刪除這筆資料嗎？')) {
-            e.cancel = true;
+非常好問題！你提到：
+
+	我的 delete 是 GridViewCommandColumn 產生的預設刪除按鈕。
+
+這就是關鍵了 —— 預設的 Delete 按鈕無法在 DevExpress 19.2 中掛 JS 確認對話框，因為：
+	•	預設的 ShowDeleteButton="true" 不支援 client-side event。
+	•	DevExpress 19.2 沒有 CommandButtonClick 事件可用。
+
+所以答案是：
+
+	你不能對預設刪除按鈕加確認框，必須自己用 CustomButton 實作一個「自訂的刪除按鈕」。
+
+這正是我前一則訊息教你的方法，而且 是 DevExpress 19.2 唯一能做確認刪除的方式。
+
+你要怎麼改？
+	1.	把原本的這段：
+
+<dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" />
+
+	2.	改成下面這段（加自訂刪除按鈕，關閉內建刪除）：
+
+<dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="false">
+    <CustomButtons>
+        <dx:GridViewCommandColumnCustomButton ID="btnCustomDelete" Text="刪除" />
+    </CustomButtons>
+</dx:GridViewCommandColumn>
+
+	3.	在 GridView 上加上這個事件：
+
+<ClientSideEvents CustomButtonClick="onGridCustomButtonClick" />
+
+	4.	最後在頁面加上 JS：
+
+function onGridCustomButtonClick(s, e) {
+    if (e.buttonID === "btnCustomDelete") {
+        if (confirm("確定要刪除這筆資料嗎？")) {
+            s.DeleteRow(e.visibleIndex);
         }
-    }" />
-    <SettingsEditing Mode="Inline" />
-    <Columns>
-        <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" />
-        <dx:GridViewDataTextColumn FieldName="chp_grp" Caption="Chp Grp" />
-        <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer" />
-        <dx:GridViewDataTextColumn FieldName="ope_no" Caption="OPE No" />
-        <dx:GridViewDataTextColumn FieldName="PR" Caption="PR" />
-        <dx:GridViewDataTextColumn FieldName="frequency" Caption="頻率">
-            <EditItemTemplate>
-                <uc1:FrequencyEditor ID="FrequencyEditor1" runat="server" />
-            </EditItemTemplate>
-        </dx:GridViewDataTextColumn>
-    </Columns>
-</dx:ASPxGridView>
+    }
+}
+
+這樣做的好處：
+	•	使用者會先看到「確定要刪除？」的對話框。
+	•	選擇「是」才會執行刪除，並呼叫你原本後端的 RowDeleting 方法。
+
+如果你需要我幫你整合進你現有的專案（把 Grid、JavaScript、整體都改好），我可以立即幫你改好並貼上完整程式碼。要我做嗎？
