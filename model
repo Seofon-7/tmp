@@ -44,15 +44,17 @@
                 OnRowUpdating="gridSpcToolRank_RowUpdating"
                 OnRowDeleting="gridSpcToolRank_RowDeleting"
                 OnCustomButtonCallback="gridSpcToolRank_CustomButtonCallback">
-                <Settings ShowFilterRow="true" ShowGroupPanel="false" />
+                <Settings ShowFilterRow="true" ShowGroupPanel="false" ShowFilterRowMenu="true" />
                 <SettingsSearchPanel Visible="true" />
                 <SettingsFilterControl ViewMode="VisualAndText" AllowHierarchicalColumns="true" />
                 <SettingsAdaptivity AdaptivityMode="HideDataCells" />
                 <SettingsDataSecurity AllowDelete="true" AllowEdit="true" AllowInsert="true" />
                 <SettingsBehavior AllowFocusedRow="true" ConfirmDelete="true" />
                 <SettingsPager PageSize="20" />
+                <SettingsText FilterRowPopupCaption="過濾條件" EmptyDataRow="無資料" />
                 <SettingsEditing Mode="Inline" />
-                <SettingsText FilterRowPopupCaption="過濾條件" />
+                <Settings ShowFilterBar="Visible" ShowFilterRow="true" ShowFilterRowMenu="true" ShowFilterRowMenuLikeItem="true" />
+                <SettingsFilterControl AllowColumnMRUFilterList="true" AllowDragDrop="true" ViewMode="VisualAndText" />
                 
                 <Toolbars>
                     <dx:GridViewToolbar>
@@ -103,7 +105,7 @@
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
                         <SettingsHeaderFilter Mode="CheckedList">
                         </SettingsHeaderFilter>
-                        <SettingsFilterControl FilterType="CheckedList" />
+                        <SettingsFilterRow Mode="DisplayText" ShowOperandImage="true" AllowAutoFilter="true" />
                     </dx:GridViewDataComboBoxColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="LAYER" Caption="LAYER" Width="100px">
@@ -111,7 +113,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
-                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
+                        <SettingsFilterRow Mode="DisplayText" ShowOperandImage="true" AllowAutoFilter="true" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="OPE_NO" Caption="OPE_NO" Width="100px">
@@ -119,7 +121,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
-                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
+                        <SettingsFilterRow Mode="DisplayText" ShowOperandImage="true" AllowAutoFilter="true" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="PR" Caption="PR" Width="100px">
@@ -127,7 +129,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
-                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
+                        <SettingsFilterRow Mode="DisplayText" ShowOperandImage="true" AllowAutoFilter="true" />
                     </dx:GridViewDataTextColumn>
                     
                     <dx:GridViewDataTextColumn FieldName="FREQUENCY" Caption="頻率" Width="150px">
@@ -135,7 +137,7 @@
                             <ValidationSettings RequiredField-IsRequired="true" RequiredField-ErrorText="必填欄位" />
                         </PropertiesTextEdit>
                         <Settings FilterMode="DisplayText" AutoFilterCondition="Contains" />
-                        <SettingsFilterRow ShowAllFilterItems="true" Mode="Value" />
+                        <SettingsFilterRow Mode="DisplayText" ShowOperandImage="true" AllowAutoFilter="true" />
                         <EditItemTemplate>
                             <div class="frequency-container">
                                 <div>
@@ -169,6 +171,10 @@
                     s.ApplyFilterByColumn = function(fieldName, filterConditionType, filterExpression) {
                         s.AutoFilterByColumn(fieldName, filterExpression);
                     };
+                }"
+                EndCallback="function(s, e) {
+                    // 重新綁定篩選器事件
+                    attachFilterEvents();
                 }" />
             </dx:ASPxGridView>
             
@@ -341,6 +347,38 @@
                 showAddPopup(true);
             }
         }
+        
+        // 附加篩選事件
+        function attachFilterEvents() {
+            // 獲取所有篩選器控件
+            var filterCells = document.querySelectorAll('.dxgvFilterRow td');
+            filterCells.forEach(function(cell) {
+                // 尋找篩選器編輯器
+                var editors = cell.querySelectorAll('input, select');
+                
+                editors.forEach(function(editor) {
+                    // 處理回車鍵事件
+                    if(editor.onkeypress === null) {
+                        editor.onkeypress = function(e) {
+                            if(e.keyCode === 13) {
+                                // 觸發篩選操作
+                                var btn = cell.querySelector('.dxbButton');
+                                if(btn) {
+                                    btn.click();
+                                }
+                                e.preventDefault();
+                                return false;
+                            }
+                        };
+                    }
+                });
+            });
+        }
+        
+        // 頁面載入完成後初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            attachFilterEvents();
+        });
     </script>
 </body>
 </html>
