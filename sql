@@ -1,58 +1,11 @@
-使用表(table)或實體化视图(materialized view)來存儲狀態變更追蹤資料確實有一些重要的差異。讓我解釋這兩者的不同之處，幫助您做出最適合您需求的選擇：
+是的，您可以在定期執行的作業中加入邏輯，以檢測並刪除那些在 status table 中已經不存在的 chipbody 記錄。這樣可以確保您的追蹤表與 status table 保持同步，不會存儲過時的資料。
 
-### 使用普通表(Table)
-
-**優點：**
-1. **靈活性高** - 可以自由地插入、更新和刪除記錄
-2. **簡單直接** - 操作和維護更簡單
-3. **即時更新** - 定期作業或觸發器可以立即更新表中的數據
-4. **索引控制** - 可以完全控制索引策略以優化查詢
-
-**缺點：**
-1. **需要手動維護** - 需要自己設計和實現清理舊數據的機制
-2. **管理成本** - 可能需要更多的管理工作
-
-### 使用實體化視圖(Materialized View)
-
-**優點：**
-1. **自動維護** - 可以設置自動重新整理(refresh)機制
-2. **整合查詢** - 可以直接整合複雜查詢結果
-3. **可以使用查詢重寫** - Oracle可以自動重寫查詢以使用實體化視圖，提高性能
-4. **數據一致性** - 與原始数据保持一致性
-
-**缺點：**
-1. **更新限制** - 不能像表一樣自由更新
-2. **整個重建** - 重新整理時通常會重建整個實體化視圖(除非使用增量重新整理)
-3. **性能考量** - 如果數據量大且頻繁刷新，可能會影響效能
-4. **存儲空間** - 可能需要更多存儲空間
-
-### 針對您的情況的建議
-
-考慮到您需要追蹤狀態變化並記錄時間戳，我建議使用**普通表**而非實體化視圖，原因如下：
-
-1. **變化追蹤需求** - 您需要檢測並記錄狀態變化，這需要比較新舊值，普通表更適合這種操作
-2. **時間戳管理** - 需要在檢測到變化時更新時間戳，普通表提供更直接的更新操作
-3. **操作簡單** - 使用MERGE語句對表進行操作比管理實體化視圖更直接
-4. **維護成本低** - 對於單純的狀態追蹤，表的維護比實體化視圖簡單
-
-### 實作方式
-
-如您所見，使用普通表的方案可能如下：
+以下是修改後的存儲過程，包含了刪除不再存在的 chipbody 的邏輯：
 
 ```sql
--- 建立追蹤表
-CREATE TABLE status_change_tracking (
-    chipbody VARCHAR2(50) PRIMARY KEY,
-    status VARCHAR2(50),
-    update_time TIMESTAMP DEFAULT SYSTIMESTAMP
-);
-
--- 創建索引以提高查詢效能
-CREATE INDEX idx_sct_chipbody ON status_change_tracking(chipbody);
-
--- 定期作業程序
 CREATE OR REPLACE PROCEDURE update_status_changes AS
 BEGIN
+    -- 步驟1: 更新現有記錄並插入新記錄
     MERGE INTO status_change_tracking t
     USING status_table s ON (t.chipbody = s.chipbody)
     WHEN MATCHED THEN
@@ -61,11 +14,128 @@ BEGIN
     WHEN NOT MATCHED THEN
         INSERT (chipbody, status, update_time)
         VALUES (s.chipbody, s.status, SYSTIMESTAMP);
+    
+    -- 步驟2: 刪除在status table中不再存在的chipbody記錄
+    DELETE FROM status_change_tracking t
+    WHERE NOT EXISTS (
+        SELECT 1 FROM status_table s
+        WHERE s.chipbody = t.chipbody
+    );
+    
     COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
 END;
 /
 ```
 
-這種方式更加直接且易於管理，特別是對於您需要追蹤狀態變化並記錄時間戳的場景。
+這個存儲過程做了兩件事：
 
-您對這個建議有什麼看法？或者您的環境中是否有其他因素需要考慮？​​​​​​​​​​​​​​​​
+1. **更新/插入記錄**：使用 MERGE 語句更新現有記錄或插入新記錄
+2. **刪除過時記錄**：刪除在 status_table 中不再存在的 chipbody 記錄
+
+### 效能考量
+
+如果數據量非常大，這個操作可能會比較耗時。您可以考慮以下優化方式：
+
+1. **分批處理**：對於大量數據，可以考慮分批刪除
+
+```sql
+CREATE OR REPLACE PROCEDURE update_status_changes AS
+    CURSOR c_to_delete IS
+        SELECT t.chipbody 
+        FROM status_change_tracking t
+        WHERE NOT EXISTS (
+            SELECT 1 FROM status_table s
+            WHERE s.chipbody = t.chipbody
+        );
+    
+    v_batch_size NUMBER := 1000; -- 調整批次大小
+    v_deleted NUMBER := 0;
+    v_chipbody_array SYS.ODCIVARCHAR2LIST := SYS.ODCIVARCHAR2LIST();
+BEGIN
+    -- 步驟1: 更新和插入邏輯保持不變
+    MERGE INTO status_change_tracking t
+    USING status_table s ON (t.chipbody = s.chipbody)
+    WHEN MATCHED THEN
+        UPDATE SET t.status = s.status, t.update_time = SYSTIMESTAMP
+        WHERE t.status != s.status
+    WHEN NOT MATCHED THEN
+        INSERT (chipbody, status, update_time)
+        VALUES (s.chipbody, s.status, SYSTIMESTAMP);
+    
+    -- 步驟2: 分批刪除不存在的記錄
+    FOR rec IN c_to_delete LOOP
+        v_deleted := v_deleted + 1;
+        v_chipbody_array.EXTEND;
+        v_chipbody_array(v_chipbody_array.COUNT) := rec.chipbody;
+        
+        -- 達到批次大小時執行刪除
+        IF v_deleted MOD v_batch_size = 0 THEN
+            FORALL i IN 1..v_chipbody_array.COUNT
+                DELETE FROM status_change_tracking
+                WHERE chipbody = v_chipbody_array(i);
+            
+            v_chipbody_array.DELETE;
+            COMMIT;
+        END IF;
+    END LOOP;
+    
+    -- 處理剩餘記錄
+    IF v_chipbody_array.COUNT > 0 THEN
+        FORALL i IN 1..v_chipbody_array.COUNT
+            DELETE FROM status_change_tracking
+            WHERE chipbody = v_chipbody_array(i);
+    END IF;
+    
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
+END;
+/
+```
+
+2. **使用並行處理**：如果您的 Oracle 版本支持，可以使用 PARALLEL 提示來加速操作
+
+```sql
+DELETE /*+ PARALLEL(t 4) */ FROM status_change_tracking t
+WHERE NOT EXISTS (
+    SELECT /*+ PARALLEL(s 4) */ 1 FROM status_table s
+    WHERE s.chipbody = t.chipbody
+);
+```
+
+3. **設置執行時間**：如果系統負載高，可以選擇在低峰時段執行清理操作
+
+```sql
+-- 建立一個單獨的清理作業
+CREATE OR REPLACE PROCEDURE cleanup_status_tracking AS
+BEGIN
+    DELETE FROM status_change_tracking t
+    WHERE NOT EXISTS (
+        SELECT 1 FROM status_table s
+        WHERE s.chipbody = t.chipbody
+    );
+    COMMIT;
+END;
+/
+
+-- 設置在系統負載低的時間執行
+BEGIN
+    DBMS_SCHEDULER.CREATE_JOB (
+        job_name        => 'CLEANUP_STATUS_JOB',
+        job_type        => 'STORED_PROCEDURE',
+        job_action      => 'cleanup_status_tracking',
+        start_date      => TRUNC(SYSDATE) + 1 + 2/24, -- 每天凌晨2點執行
+        repeat_interval => 'FREQ=DAILY',
+        enabled         => TRUE,
+        comments        => '清理過時狀態追蹤數據');
+END;
+/
+```
+
+這些方案可以確保您的追蹤表與 status table 保持同步，同時有效管理系統資源。您可以根據自己的實際數據量和系統負載情況選擇最適合的實現方式。​​​​​​​​​​​​​​​​
