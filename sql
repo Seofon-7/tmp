@@ -105,4 +105,50 @@ END;
 /
 ```
 
+
+我了解您需要在Oracle中找出一個欄位中格式錯誤的資料，特別是尋找那些V值沒有對應@M1字眼的記錄。
+
+您描述的資料格式看起來像是：`{V1=@M1:01W0; V2=@M1:11W0}{V1;V2}`，其中：
+- 第一個大括號內包含V項目的定義，每個V後面都應該有@M1
+- 第二個大括號內列出了所有的V項目
+
+針對您的需求，我們可以使用正則表達式來檢查不符合格式的資料。以下是一個Oracle SQL查詢，可以幫您找出V值沒有對應@M1字眼的錯誤格式資料：
+
+```sql
+SELECT your_column, 
+       REGEXP_SUBSTR(your_column, '\{(.+?)\}', 1, 1) AS first_bracket,
+       REGEXP_SUBSTR(your_column, '\{(.+?)\}', 1, 2) AS second_bracket
+FROM your_table
+WHERE REGEXP_LIKE(your_column, '\{.*(V\d+=[^@]|V\d+=$|V\d+=[^@M1]).*\}');
+```
+
+這個查詢會找出第一個大括號中有V值但沒有對應@M1的記錄。如果您想要更精確的檢查，可以使用以下更複雜的查詢：
+
+```sql
+WITH data_extract AS (
+  SELECT 
+    your_column,
+    REGEXP_SUBSTR(your_column, '\{(.+?)\}', 1, 1, NULL, 1) AS first_part,
+    REGEXP_SUBSTR(your_column, '\{(.+?)\}', 1, 2, NULL, 1) AS second_part
+  FROM your_table
+)
+SELECT 
+  your_column 
+FROM data_extract
+WHERE 
+  REGEXP_LIKE(first_part, '(^|;)\s*V\d+\s*=\s*(?!@M1)') OR
+  EXISTS (
+    SELECT 1
+    FROM (
+      SELECT REGEXP_SUBSTR(first_part, '(V\d+)', 1, LEVEL, NULL, 1) AS v_item
+      FROM dual
+      CONNECT BY REGEXP_SUBSTR(first_part, '(V\d+)', 1, LEVEL, NULL, 1) IS NOT NULL
+    ) v_items
+    WHERE NOT REGEXP_LIKE(first_part, v_items.v_item || '\s*=\s*@M1')
+  );
+```
+
+您是否需要針對您的具體表結構和欄位名稱調整這個查詢？或者您有任何其他關於這個問題的要求？​​​​​​​​​​​​​​​​
+
+
 總結來說，對於20萬筆數據，您不需要採用複雜的批處理或並行處理方法。標準的 MERGE 和 DELETE 操作應該能夠高效地完成您的需求，同時保持程式碼的簡潔和可維護性。​​​​​​​​​​​​​​​​
