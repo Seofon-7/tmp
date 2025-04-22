@@ -1,93 +1,68 @@
-下面這段純 SQL（不需自訂 Function），會：
-	1.	用 INSTR＋SUBSTR＋CONNECT BY 快速把 jobs 拆成一行行 job_id（同樣不走 REGEXP，效能佳）
-	2.	直接利用 ROWID 來聚合，不用在 GROUP BY 中列出所有欄位
-	3.	在切割後只保留每筆 spc_tool_rank_setting（以 ROWID 為準）對應到的 不同 area_prefix，再 LISTAGG，保證不重複
+了解，你的需求是這樣：
+	•	環境：.NET Framework 4.7.2 + DevExpress 19.2，ASPxGridView，GridViewToolbar，裡面有 Items，Items 裡有 GridViewToolbarItem，GridViewToolbarItem 內又放了一個 ASPxComboBox。
+	•	功能：
+	•	ComboBox 提供選項。
+	•	使用者選 ComboBox 的某個值後，ASPxGridView 會根據 Area 欄位進行篩選（模糊包含，也就是只要 Area 包含 ComboBox 選到的值就列出來）。
 
-WITH job_area AS (
-    -- 先截出每個 job_id 的 area_prefix（底線前段）
-    SELECT 
-        js.job_id,
-        CASE 
-            WHEN INSTR(js.areaid, '_') > 0 
-            THEN SUBSTR(js.areaid, 1, INSTR(js.areaid, '_') - 1)
-            ELSE js.areaid
-        END AS area_prefix
-    FROM spc_job_setting js
-),
-split_jobs AS (
-    -- 把每筆 spc_tool_rank_setting 的 jobs 拆成多行，並標記原始 ROWID
-    SELECT 
-        s.rowid      AS rid,
-        TRIM(
-          SUBSTR(
-            s.jobs,
-            CASE WHEN LEVEL = 1 
-                 THEN 1 
-                 ELSE INSTR(s.jobs, ',', 1, LEVEL-1) + 1 
-            END,
-            CASE 
-              WHEN INSTR(s.jobs, ',', 1, LEVEL) > 0 
-              THEN INSTR(s.jobs, ',', 1, LEVEL) 
-                   - (CASE WHEN LEVEL = 1 
-                           THEN 1 
-                           ELSE INSTR(s.jobs, ',', 1, LEVEL-1) + 1 
-                     END)
-              ELSE LENGTH(s.jobs)
-            END
-          )
-        )             AS job_id
-    FROM spc_tool_rank_setting s
-    CONNECT BY 
-        PRIOR s.rowid = s.rowid
-        AND PRIOR dbms_random.value IS NOT NULL
-        AND LEVEL <= REGEXP_COUNT(s.jobs, ',') + 1
-),
-joined_data AS (
-    -- 把拆好的 job_id 跟 area_prefix join，保留 rowid
-    SELECT
-        sj.rid,
-        ja.area_prefix
-    FROM split_jobs sj
-    JOIN job_area ja ON sj.job_id = ja.job_id
-),
-distinct_area AS (
-    -- 同一 rid + 同一 area_prefix 只留一筆，去掉重複
-    SELECT DISTINCT
-        rid,
-        area_prefix
-    FROM joined_data
-),
-area_agg AS (
-    -- 每筆原始資料 (rid) 聚合成一個 area_list，值不重複
-    SELECT
-        rid,
-        LISTAGG(area_prefix, ';') WITHIN GROUP (ORDER BY area_prefix) AS area_list
-    FROM distinct_area
-    GROUP BY rid
-)
--- 最後把全部欄位 + area_list 撈出來
-SELECT
-    t.*,                      -- spc_tool_rank_setting 裡的所有欄位
-    NVL(aa.area_list, '') AS area_list
-FROM 
-    spc_tool_rank_setting t
-LEFT JOIN 
-    area_agg aa ON aa.rid = t.rowid;
+這個我可以給你一個清楚範例，會分成幾步：
 
-說明
-	1.	拆字串不跑正則：INSTR＋SUBSTR 比 REGEXP_SUBSTR 快，搭配 CONNECT BY … LEVEL 只展開該行需要的次數。
-	2.	用 ROWID 聚合：拆完之後只用 rid = ROWID 來做去重、聚合，最後再 LEFT JOIN 回原表，避免在 GROUP BY 裡面列出一大堆欄位。
-	3.	去重：distinct_area CTE 先針對同一筆原始資料 (rid) + area_prefix 去重，保證 LISTAGG 時不會有重複的值。
-	4.	整張表一把抓：最終 SELECT t.*, aa.area_list 直接把 spc_tool_rank_setting 的所有欄位都撈出來，並加上你要的 area_list。
+1. 先在 GridViewToolbar 裡面放 ComboBox
 
-如果之後想要方便重複使用，可以把上面整串改成一個 View：
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" ...>
+    <Settings ShowFilterRow="true" />
+    <Toolbars>
+        <dx:GridViewToolbar>
+            <Items>
+                <dx:GridViewToolbarItem>
+                    <Template>
+                        <dx:ASPxComboBox ID="cmbAreaFilter" runat="server" Width="200px" 
+                            OnSelectedIndexChanged="cmbAreaFilter_SelectedIndexChanged" AutoPostBack="true">
+                            <Items>
+                                <dx:ListEditItem Text="All" Value="" />
+                                <dx:ListEditItem Text="North" Value="North" />
+                                <dx:ListEditItem Text="South" Value="South" />
+                                <dx:ListEditItem Text="East" Value="East" />
+                                <dx:ListEditItem Text="West" Value="West" />
+                            </Items>
+                        </dx:ASPxComboBox>
+                    </Template>
+                </dx:GridViewToolbarItem>
+            </Items>
+        </dx:GridViewToolbar>
+    </Toolbars>
+</dx:ASPxGridView>
 
-CREATE OR REPLACE VIEW v_tool_rank_with_area AS
--- （把上面那段 SQL SELECT ... FROM ... LEFT JOIN ... 全部貼進來）
+注意：
+	•	AutoPostBack="true"：選到的時候馬上送到伺服器處理。
+	•	OnSelectedIndexChanged="cmbAreaFilter_SelectedIndexChanged"：會觸發後端事件。
 
-之後就可以簡單地：
+2. 寫 ComboBox 的後端事件（C#）
 
-SELECT * 
-FROM v_tool_rank_with_area;
+protected void cmbAreaFilter_SelectedIndexChanged(object sender, EventArgs e)
+{
+    var combo = sender as ASPxComboBox;
+    string selectedValue = combo.SelectedItem?.Value?.ToString();
 
-就能拿到所有欄位＋去重好的 area_list，執行效能也已經優化到極致。
+    if (string.IsNullOrEmpty(selectedValue))
+    {
+        // 沒選東西，就清掉篩選
+        ASPxGridView1.ClearFilter();
+    }
+    else
+    {
+        // 用 Area 欄位做「包含」篩選
+        // 注意：LIKE '%value%' 的效果
+        ASPxGridView1.DataSourceID = null; // 如果你是用 DataSource 控件，這行可以略過
+        ASPxGridView1.FilterExpression = $"Contains([Area], '{selectedValue}')";
+        ASPxGridView1.DataBind();
+    }
+}
+
+3. 小細節補充
+	•	如果你的 Grid 是用 DataSourceID 直接綁資料，可以不用 DataBind()，直接設 FilterExpression 就有效。
+	•	如果是自己 ASPxGridView.DataSource = xxx; DataBind();，那就記得要 DataBind()。
+	•	Contains([Area], 'xxx') 是 DevExpress GridView 的標準語法，可以做類似 SQL 的 %xxx% 查詢。
+	•	如果 Area 有可能有單引號 '，你要自己做字串 escape，避免語法錯誤。
+
+要不要我也順便給你一版前端用 JavaScript (Client-Side) 篩選的做法？速度更快，不用 PostBack。如果要，我可以再補一版。
+要不要一起給？（你選擇）
