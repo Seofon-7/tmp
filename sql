@@ -50,21 +50,30 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq;
 using System.Web.UI;
 using DevExpress.Web;
+using Oracle.ManagedDataAccess.Client;
+using System.Configuration;
 
 namespace DevExpressSample
 {
     public partial class Default : Page
     {
+        // 取得資料庫連線字串
+        private string ConnectionString
+        {
+            get
+            {
+                return ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
+            }
+        }
+
         protected void Page_Load(object sender, EventArgs e)
         {
             if (!IsPostBack)
             {
                 // 綁定資料到 GridView
-                ASPxGridView1.DataSource = CreateSampleData();
-                ASPxGridView1.DataBind();
+                BindGridView();
                 
                 // 初始化下拉選單
                 InitializeAreaComboBox();
@@ -110,42 +119,63 @@ namespace DevExpressSample
                 // 添加「全部」選項
                 areaComboBox.Items.Add("全部", "");
                 
-                // 從資料源中提取不重複的區域值
-                DataTable dataTable = CreateSampleData();
-                List<string> areas = new List<string>();
-                
-                foreach (DataRow row in dataTable.Rows)
+                // 從 Oracle 資料庫中獲取不重複的區域值
+                using (OracleConnection conn = new OracleConnection(ConnectionString))
                 {
-                    string area = row["Area"].ToString();
-                    if (!areas.Contains(area))
+                    try
                     {
-                        areas.Add(area);
-                        areaComboBox.Items.Add(area, area);
+                        conn.Open();
+                        // 請根據實際表名和欄位名修改以下 SQL 查詢
+                        string sql = "SELECT DISTINCT Area FROM YourTableName ORDER BY Area";
+                        using (OracleCommand cmd = new OracleCommand(sql, conn))
+                        {
+                            using (OracleDataReader reader = cmd.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    string area = reader["Area"].ToString();
+                                    areaComboBox.Items.Add(area, area);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // 記錄異常
+                        System.Diagnostics.Debug.WriteLine("獲取區域資料錯誤: " + ex.Message);
+                        // 可以加入更多錯誤處理邏輯
                     }
                 }
             }
         }
         
-        // 創建測試數據
-        private DataTable CreateSampleData()
+        private void BindGridView()
         {
-            DataTable dt = new DataTable();
-            dt.Columns.Add("ID", typeof(int));
-            dt.Columns.Add("Name", typeof(string));
-            dt.Columns.Add("Area", typeof(string));
-            dt.Columns.Add("Description", typeof(string));
-            
-            // 添加測試數據
-            dt.Rows.Add(1, "測試項目 1", "台北市", "台北市測試描述");
-            dt.Rows.Add(2, "測試項目 2", "新北市", "新北市測試描述");
-            dt.Rows.Add(3, "測試項目 3", "台北市", "台北市另一個測試");
-            dt.Rows.Add(4, "測試項目 4", "桃園市", "桃園市測試描述");
-            dt.Rows.Add(5, "測試項目 5", "新竹市", "新竹市測試描述");
-            dt.Rows.Add(6, "測試項目 6", "台北市", "台北市第三個測試");
-            dt.Rows.Add(7, "測試項目 7", "台中市", "台中市測試描述");
-            dt.Rows.Add(8, "測試項目 8", "高雄市", "高雄市測試描述");
-            
-            return dt;
+            using (OracleConnection conn = new OracleConnection(ConnectionString))
+            {
+                try
+                {
+                    conn.Open();
+                    // 請根據實際表名和欄位名修改以下 SQL 查詢
+                    string sql = "SELECT ID, Name, Area, Description FROM YourTableName";
+                    using (OracleCommand cmd = new OracleCommand(sql, conn))
+                    {
+                        OracleDataAdapter adapter = new OracleDataAdapter(cmd);
+                        DataTable dt = new DataTable();
+                        adapter.Fill(dt);
+                        
+                        // 綁定數據到 GridView
+                        ASPxGridView1.DataSource = dt;
+                        ASPxGridView1.DataBind();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 記錄異常
+                    System.Diagnostics.Debug.WriteLine("綁定 GridView 錯誤: " + ex.Message);
+                    // 可以加入更多錯誤處理邏輯
+                }
+            }
         }
     }
 }
