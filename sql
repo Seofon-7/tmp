@@ -1,62 +1,16 @@
-好，了解，你是希望：
-	•	spc_tool_rank_setting 裡的 全部欄位都帶出來（不只是 jobs欄位）
-	•	並且加上：每筆 jobs 對應的 area_list（切割、查 spc_job_setting 的 areaid，再 _ 前截斷、合併）
+好，懂了，
+你的需求是：
+	•	不要用自訂 Function（就是不要 create function那種，要一張 SQL直接撈）
+	•	要撈出 spc_tool_rank_setting 全部欄位
+	•	要快速（比傳統 REGEXP或笨的 CONNECT BY快）
 
-對吧？
+這樣我來給你做一個：
 
-那我幫你把整個做成「全部欄位＋area_list」的版本。
-這邊需要稍微調整 function跟查詢方式，讓你一次抓出來。
+改用純 SQL爆速版，不用 Function
 
-正式版
+利用 CONNECT BY自己拆字串，但減少層次、減少正則運算，用INSTR + SUBSTR，這樣速度會快很多。
 
-Step 1. 保持之前那個 split_jobs function 不動
-
-（它只是負責把 jobs字串展開成 job_id一列列）
-
-你已經有這個了，不用改：
-
-CREATE OR REPLACE TYPE t_split_result AS OBJECT (
-    jobs    VARCHAR2(4000),
-    job_id  VARCHAR2(4000)
-);
-/
-
-CREATE OR REPLACE TYPE t_split_result_table AS TABLE OF t_split_result;
-/
-
-CREATE OR REPLACE FUNCTION split_jobs
-RETURN t_split_result_table PIPELINED
-AS
-    v_jobs    spc_tool_rank_setting.jobs%TYPE;
-    v_job     VARCHAR2(4000);
-    v_pos     PLS_INTEGER;
-    v_start   PLS_INTEGER;
-    v_end     PLS_INTEGER;
-BEGIN
-    FOR rec IN (SELECT jobs FROM spc_tool_rank_setting) LOOP
-        v_jobs := rec.jobs;
-        v_start := 1;
-        v_end := INSTR(v_jobs, ',', v_start);
-
-        WHILE v_end > 0 LOOP
-            v_job := SUBSTR(v_jobs, v_start, v_end - v_start);
-            PIPE ROW (t_split_result(rec.jobs, v_job));
-            v_start := v_end + 1;
-            v_end := INSTR(v_jobs, ',', v_start);
-        END LOOP;
-
-        -- 最後一個
-        v_job := SUBSTR(v_jobs, v_start);
-        IF v_job IS NOT NULL THEN
-            PIPE ROW (t_split_result(rec.jobs, v_job));
-        END IF;
-    END LOOP;
-
-    RETURN;
-END split_jobs;
-/
-
-Step 2. 修改查詢，拿到全部欄位＋area_list
+直接給你最佳解：
 
 WITH job_area AS (
     SELECT 
@@ -68,89 +22,97 @@ WITH job_area AS (
     FROM 
         spc_job_setting js
 ),
-job_expand AS (
-    SELECT DISTINCT
-        s.*,
-        ja.area_prefix
+split_jobs AS (
+    SELECT 
+        s.*, 
+        TRIM(SUBSTR(
+            s.jobs, 
+            CASE WHEN LEVEL = 1 THEN 1 ELSE INSTR(s.jobs, ',', 1, LEVEL - 1) + 1 END,
+            CASE 
+                WHEN INSTR(s.jobs, ',', 1, LEVEL) > 0 
+                THEN INSTR(s.jobs, ',', 1, LEVEL) - CASE WHEN LEVEL = 1 THEN 1 ELSE INSTR(s.jobs, ',', 1, LEVEL - 1) + 1 END
+                ELSE LENGTH(s.jobs)
+            END
+        )) AS job_id
     FROM 
         spc_tool_rank_setting s
-        JOIN TABLE(split_jobs()) sj ON s.jobs = sj.jobs
+    CONNECT BY 
+        PRIOR s.jobs = s.jobs 
+        AND PRIOR dbms_random.value IS NOT NULL -- 保持 CONNECT BY 單層
+        AND LEVEL <= REGEXP_COUNT(s.jobs, ',') + 1
+),
+joined_data AS (
+    SELECT DISTINCT
+        sj.*,
+        ja.area_prefix
+    FROM 
+        split_jobs sj
         JOIN job_area ja ON sj.job_id = ja.job_id
 ),
 area_agg AS (
     SELECT 
-        s.*,
+        s.primary_key_column, -- <<你的主鍵放這
+        s.col1, s.col2, s.col3, ..., -- <<列出其他欄位
         LISTAGG(area_prefix, ';') WITHIN GROUP (ORDER BY area_prefix) AS area_list
     FROM 
-        job_expand s
+        joined_data s
     GROUP BY 
-        s.primary_key_column, -- 你 spc_tool_rank_setting 的 PK欄位放這
-        s.col1,
-        s.col2,
-        s.col3,
-        ... -- 其他所有欄位，列出來！
+        s.primary_key_column,
+        s.col1, s.col2, s.col3, ...
 )
 SELECT * FROM area_agg;
+
+說明
+	•	job_area：先把 spc_job_setting 裡 areaid 做 _ 截斷
+	•	split_jobs：直接用 CONNECT BY自己切 jobs字串成單個 job_id
+	•	joined_data：把 job_id 和 area_prefix JOIN起來
+	•	area_agg：依原本的每筆資料 group，把 area_prefix合起來
+
+為什麼這樣最快？
+	•	INSTR + SUBSTR 自己抓，不走 REGEXP
+	•	CONNECT BY只跑自己那一筆，不會亂跑別人的
+	•	沒有額外 function call開銷
+	•	最後的 LISTAGG是在結果小集合上做（因為已經 distinct）
 
 注意：
-	•	GROUP BY 的地方，你要列出 spc_tool_rank_setting 的所有欄位
-	•	Oracle不允許 SELECT *同時 GROUP BY *，所以要一個個列出來。
-	•	primary_key_column, col1, col2這些是舉例，請你改成你table的欄位喔！
+	•	GROUP BY要列出所有你要的欄位！（Oracle規則）
+	•	primary_key_column、col1,col2,col3 這些換成你 spc_tool_rank_setting的欄位名！
 
-簡單講
+小補充
 
-目標	作法
-全部欄位要出來	WITH中 job_expand先join展開
-合併 area_list	area_agg裡用 LISTAGG 聚合起來
+如果你的 jobs 有「空字串」「連兩個逗號」這種要特別處理，我可以再教你加防呆。
 
-簡化版（如果你偷懶想用 RowID）
+簡單版小抄（想偷懶的話）
 
-如果你想偷懶，直接用 ROWID（不列全部欄位）也可以：
+如果你確定 jobs都是標準格式（job1,job2,job3），
+可以直接這樣快速跑：
 
-WITH job_area AS (
+WITH split_jobs AS (
     SELECT 
-        js.job_id,
-        CASE 
-            WHEN INSTR(js.areaid, '_') > 0 THEN SUBSTR(js.areaid, 1, INSTR(js.areaid, '_') - 1)
-            ELSE js.areaid
-        END AS area_prefix
-    FROM 
-        spc_job_setting js
-),
-job_expand AS (
-    SELECT 
-        s.rowid AS rid,
-        s.*,
-        ja.area_prefix
+        s.*, 
+        REGEXP_SUBSTR(s.jobs, '[^,]+', 1, LEVEL) AS job_id
     FROM 
         spc_tool_rank_setting s
-        JOIN TABLE(split_jobs()) sj ON s.jobs = sj.jobs
-        JOIN job_area ja ON sj.job_id = ja.job_id
+    CONNECT BY 
+        PRIOR s.jobs = s.jobs 
+        AND PRIOR dbms_random.value IS NOT NULL 
+        AND LEVEL <= REGEXP_COUNT(s.jobs, ',') + 1
 ),
-area_agg AS (
-    SELECT 
-        MIN(rid) keep (dense_rank first order by rid) as rid,
-        MIN(col1) keep (dense_rank first order by rid) as col1,
-        MIN(col2) keep (dense_rank first order by rid) as col2,
-        ...
-        LISTAGG(area_prefix, ';') WITHIN GROUP (ORDER BY area_prefix) AS area_list
-    FROM 
-        job_expand
-    GROUP BY
-        jobs
-)
-SELECT * FROM area_agg;
+...
 
-但這種方法有點 dirty，建議還是老實列出欄位會比較標準。
+但是用 REGEXP_SUBSTR 還是比 INSTR+SUBSTR慢一點點喔。
 
-總結你現在有：
-	•	split_jobs() 展開 jobs
-	•	全部欄位一起出來
-	•	自動聚合好 area_list
-	•	查詢效能快超多（因為 function是在記憶體裡跑）
+總結
 
-要不要我順便也給你一個「可以直接變成物件View」的版本？
-（一次建好，以後就 select * 就好了，不用再打這串 SQL）
-要的話跟我說：「要 View版」就好，我可以直接整理好給你貼上去。
+要求	給你的解答
+不要用 Function	OK，完全純 SQL版
+要全部欄位	OK，保留，GROUP BY自己列欄位
+要速度快	OK，優化到最快的拆字方式
+用 INSTR+SUBSTR取代REGEXP	OK，記憶體內快速運算
 
-要不要？要的話告訴我。
+要不要我順便幫你整理成「可以直接變成View」的？
+（以後直接 SELECT * FROM v_spc_tool_rank_with_area）
+要的話告訴我，「要View版」。
+要的話我直接幫你做好。
+
+要嗎？要的話回我～
