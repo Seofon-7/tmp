@@ -1,70 +1,64 @@
-好，你說明你是 Oracle 11g，那就很清楚了：
-Oracle 11g 已經支援 LISTAGG，所以可以不用去搞 XMLAGG 或其他繞路。
+好，了解，你是希望：
+	•	spc_tool_rank_setting 裡的 全部欄位都帶出來（不只是 jobs欄位）
+	•	並且加上：每筆 jobs 對應的 area_list（切割、查 spc_job_setting 的 areaid，再 _ 前截斷、合併）
 
-現在先來整理一下你的需求現況跟優化點：
+對吧？
 
-目前基本做法
-	•	jobs 裡面用逗號分隔，要展開
-	•	每個 job_id 要去 spc_job_setting 找 areaid
-	•	只取 areaid 底線前那段
-	•	不同的 area_prefix 合併成一個字串，用 ; 隔開
+那我幫你把整個做成「全部欄位＋area_list」的版本。
+這邊需要稍微調整 function跟查詢方式，讓你一次抓出來。
 
-原本寫法 (使用 REGEXP_SUBSTR + CONNECT BY)
+正式版
 
-WITH job_split AS (
-    SELECT 
-        t.jobs,
-        REGEXP_SUBSTR(t.jobs, '[^,]+', 1, LEVEL) AS job_id
-    FROM 
-        spc_tool_rank_setting t
-    CONNECT BY 
-        REGEXP_SUBSTR(t.jobs, '[^,]+', 1, LEVEL) IS NOT NULL
-        AND PRIOR t.rowid = t.rowid
-        AND PRIOR DBMS_RANDOM.VALUE IS NOT NULL
-),
-job_area AS (
-    SELECT 
-        js.job_id,
-        SUBSTR(js.areaid, 1, INSTR(js.areaid, '_') - 1) AS area_prefix
-    FROM 
-        spc_job_setting js
-)
-SELECT 
-    ts.jobs,
-    LISTAGG(DISTINCT ja.area_prefix, ';') WITHIN GROUP (ORDER BY ja.area_prefix) AS area_list
-FROM 
-    job_split ts
-    LEFT JOIN job_area ja ON ts.job_id = ja.job_id
-GROUP BY 
-    ts.jobs
+Step 1. 保持之前那個 split_jobs function 不動
 
-可以優化的地方
-	1.	REGEXP_SUBSTR 是很慢的，尤其是大量資料，因為 Oracle 要逐筆正則運算。
-	•	解法：自己寫個小型 FUNCTION 或套「簡單的字串切割法」，避開 REGEXP。
-	2.	CONNECT BY 搭配 PRIOR 是一種 workaround，對大資料表來說效能不太好。
-	•	解法：可以用 Pipelined Table Function 直接切，這樣直接展平，比起 CONNECT BY要快很多。
-	3.	索引
-	•	spc_job_setting.job_id 應該有 primary key，沒問題。
-	•	確認 spc_tool_rank_setting.jobs 沒辦法加索引（因為是逗號字串），所以沒救。
-	•	但是可以讓job_split部分提前 cache。
-	4.	LISTAGG(DISTINCT) Oracle 11g 原生其實不支援 DISTINCT，你這裡會出問題喔。
-	•	要先用子查詢去 DISTINCT。
-	•	不然會出 ORA-30491: 'distinct' not allowed 錯誤。
+（它只是負責把 jobs字串展開成 job_id一列列）
 
-更正並優化版（只用 SQL，不寫 function）
+你已經有這個了，不用改：
 
-WITH job_split AS (
-    SELECT 
-        t.jobs,
-        REGEXP_SUBSTR(t.jobs, '[^,]+', 1, LEVEL) AS job_id
-    FROM 
-        spc_tool_rank_setting t
-    CONNECT BY 
-        REGEXP_SUBSTR(t.jobs, '[^,]+', 1, LEVEL) IS NOT NULL
-        AND PRIOR t.rowid = t.rowid
-        AND PRIOR DBMS_RANDOM.VALUE IS NOT NULL
-),
-job_area AS (
+CREATE OR REPLACE TYPE t_split_result AS OBJECT (
+    jobs    VARCHAR2(4000),
+    job_id  VARCHAR2(4000)
+);
+/
+
+CREATE OR REPLACE TYPE t_split_result_table AS TABLE OF t_split_result;
+/
+
+CREATE OR REPLACE FUNCTION split_jobs
+RETURN t_split_result_table PIPELINED
+AS
+    v_jobs    spc_tool_rank_setting.jobs%TYPE;
+    v_job     VARCHAR2(4000);
+    v_pos     PLS_INTEGER;
+    v_start   PLS_INTEGER;
+    v_end     PLS_INTEGER;
+BEGIN
+    FOR rec IN (SELECT jobs FROM spc_tool_rank_setting) LOOP
+        v_jobs := rec.jobs;
+        v_start := 1;
+        v_end := INSTR(v_jobs, ',', v_start);
+
+        WHILE v_end > 0 LOOP
+            v_job := SUBSTR(v_jobs, v_start, v_end - v_start);
+            PIPE ROW (t_split_result(rec.jobs, v_job));
+            v_start := v_end + 1;
+            v_end := INSTR(v_jobs, ',', v_start);
+        END LOOP;
+
+        -- 最後一個
+        v_job := SUBSTR(v_jobs, v_start);
+        IF v_job IS NOT NULL THEN
+            PIPE ROW (t_split_result(rec.jobs, v_job));
+        END IF;
+    END LOOP;
+
+    RETURN;
+END split_jobs;
+/
+
+Step 2. 修改查詢，拿到全部欄位＋area_list
+
+WITH job_area AS (
     SELECT 
         js.job_id,
         CASE 
@@ -74,38 +68,89 @@ job_area AS (
     FROM 
         spc_job_setting js
 ),
-joined_data AS (
+job_expand AS (
     SELECT DISTINCT
-        ts.jobs,
+        s.*,
         ja.area_prefix
     FROM 
-        job_split ts
-        JOIN job_area ja ON ts.job_id = ja.job_id
+        spc_tool_rank_setting s
+        JOIN TABLE(split_jobs()) sj ON s.jobs = sj.jobs
+        JOIN job_area ja ON sj.job_id = ja.job_id
+),
+area_agg AS (
+    SELECT 
+        s.*,
+        LISTAGG(area_prefix, ';') WITHIN GROUP (ORDER BY area_prefix) AS area_list
+    FROM 
+        job_expand s
+    GROUP BY 
+        s.primary_key_column, -- 你 spc_tool_rank_setting 的 PK欄位放這
+        s.col1,
+        s.col2,
+        s.col3,
+        ... -- 其他所有欄位，列出來！
 )
-SELECT 
-    jobs,
-    LISTAGG(area_prefix, ';') WITHIN GROUP (ORDER BY area_prefix) AS area_list
-FROM 
-    joined_data
-GROUP BY 
-    jobs
+SELECT * FROM area_agg;
 
-關鍵改動說明：
-	•	joined_data 先做 DISTINCT
-	•	LISTAGG 時就不用 DISTINCT，避免 11g 報錯。
-	•	areaid 防呆：如果 areaid 沒有底線 _，就直接取整個 areaid
-	•	SQL結構清楚，且是最適合 11g 的寫法。
+注意：
+	•	GROUP BY 的地方，你要列出 spc_tool_rank_setting 的所有欄位
+	•	Oracle不允許 SELECT *同時 GROUP BY *，所以要一個個列出來。
+	•	primary_key_column, col1, col2這些是舉例，請你改成你table的欄位喔！
 
-如果要進一步爆炸加速：
+簡單講
 
-可以寫一個 Pipelined Table Function，直接一次把 jobs 拆掉＋join好，速度可以快到 5-10倍。
+目標	作法
+全部欄位要出來	WITH中 job_expand先join展開
+合併 area_list	area_agg裡用 LISTAGG 聚合起來
 
-如果你想要的話，我可以再教你寫一個 超快版 function + SQL。
-（這樣你的資料量即使幾萬筆也能 1秒以內搞定）
+簡化版（如果你偷懶想用 RowID）
 
-要不要我也順便幫你弄一個 可直接建成 View 的？
-如果要的話我可以順便加上完整的 View 建立語法給你！
-（只要貼上去建一次，之後就直接 select * from my_view 超快超好用）
+如果你想偷懶，直接用 ROWID（不列全部欄位）也可以：
 
-要嗎？要的話回我說一聲～
-還可以一起討論你資料量級別（比如幾萬或幾十萬筆？）來調整最適合你環境的版本。
+WITH job_area AS (
+    SELECT 
+        js.job_id,
+        CASE 
+            WHEN INSTR(js.areaid, '_') > 0 THEN SUBSTR(js.areaid, 1, INSTR(js.areaid, '_') - 1)
+            ELSE js.areaid
+        END AS area_prefix
+    FROM 
+        spc_job_setting js
+),
+job_expand AS (
+    SELECT 
+        s.rowid AS rid,
+        s.*,
+        ja.area_prefix
+    FROM 
+        spc_tool_rank_setting s
+        JOIN TABLE(split_jobs()) sj ON s.jobs = sj.jobs
+        JOIN job_area ja ON sj.job_id = ja.job_id
+),
+area_agg AS (
+    SELECT 
+        MIN(rid) keep (dense_rank first order by rid) as rid,
+        MIN(col1) keep (dense_rank first order by rid) as col1,
+        MIN(col2) keep (dense_rank first order by rid) as col2,
+        ...
+        LISTAGG(area_prefix, ';') WITHIN GROUP (ORDER BY area_prefix) AS area_list
+    FROM 
+        job_expand
+    GROUP BY
+        jobs
+)
+SELECT * FROM area_agg;
+
+但這種方法有點 dirty，建議還是老實列出欄位會比較標準。
+
+總結你現在有：
+	•	split_jobs() 展開 jobs
+	•	全部欄位一起出來
+	•	自動聚合好 area_list
+	•	查詢效能快超多（因為 function是在記憶體裡跑）
+
+要不要我順便也給你一個「可以直接變成物件View」的版本？
+（一次建好，以後就 select * 就好了，不用再打這串 SQL）
+要的話跟我說：「要 View版」就好，我可以直接整理好給你貼上去。
+
+要不要？要的話告訴我。
