@@ -1,16 +1,17 @@
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Default.aspx.cs" Inherits="DevExpressSample.Default" %>
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="ClientFiltering.aspx.cs" Inherits="DevExpressSample.ClientFiltering" %>
 
 <!DOCTYPE html>
 
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head runat="server">
-    <title>ASPxGridView 篩選範例</title>
+    <title>ASPxGridView 客戶端篩選</title>
 </head>
 <body>
     <form id="form1" runat="server">
         <div>
             <dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False" 
-                KeyFieldName="ID" OnInit="ASPxGridView1_Init">
+                KeyFieldName="ID" ClientInstanceName="grid"
+                OnInit="ASPxGridView1_Init">
                 <SettingsSearchPanel Visible="false" />
                 <Toolbars>
                     <dx:GridViewToolbar>
@@ -20,13 +21,20 @@
                                     <dx:ASPxComboBox ID="AreaFilter" runat="server" Width="200px" 
                                         Caption="選擇區域:" DropDownStyle="DropDownList" 
                                         ValueType="System.String" IncrementalFilteringMode="Contains"
-                                        OnSelectedIndexChanged="AreaFilter_SelectedIndexChanged"
-                                        AutoPostBack="true">
+                                        ClientInstanceName="areaComboBox">
                                         <CaptionSettings Position="Left" />
+                                        <ClientSideEvents SelectedIndexChanged="function(s, e) { ApplyAreaFilter(); }" />
                                     </dx:ASPxComboBox>
                                 </Template>
                             </dx:GridViewToolbarItem>
-                            <dx:GridViewToolbarItem Command="ClearFilter" Text="清除篩選" />
+                            <dx:GridViewToolbarItem>
+                                <Template>
+                                    <dx:ASPxButton ID="ClearFilterBtn" runat="server" Text="清除篩選" 
+                                        AutoPostBack="false">
+                                        <ClientSideEvents Click="function(s, e) { ClearFilter(); }" />
+                                    </dx:ASPxButton>
+                                </Template>
+                            </dx:GridViewToolbarItem>
                         </Items>
                     </dx:GridViewToolbar>
                 </Toolbars>
@@ -41,11 +49,36 @@
                     </dx:GridViewDataTextColumn>
                 </Columns>
                 <Settings ShowFilterRow="false" />
+                <ClientSideEvents Init="function(s, e) { InitializeEvents(); }" />
             </dx:ASPxGridView>
         </div>
     </form>
+    
+    <script type="text/javascript">
+        function InitializeEvents() {
+            // 初始化時沒有特別動作
+        }
+        
+        function ApplyAreaFilter() {
+            var filterValue = areaComboBox.GetValue();
+            if (filterValue) {
+                // 創建字符串包含過濾條件 - 使用 LIKE 篩選，相當於包含篩選
+                grid.ApplyFilter("[Area] LIKE '%" + filterValue + "%'");
+            } else {
+                // 如果沒有選擇值，清除篩選
+                grid.ClearFilter();
+            }
+        }
+        
+        function ClearFilter() {
+            // 清除篩選並將下拉框重置為未選擇狀態
+            grid.ClearFilter();
+            areaComboBox.SetSelectedIndex(0);
+        }
+    </script>
 </body>
 </html>
+
 
 using System;
 using System.Collections.Generic;
@@ -57,7 +90,7 @@ using System.Configuration;
 
 namespace DevExpressSample
 {
-    public partial class Default : Page
+    public partial class ClientFiltering : Page
     {
         // 取得資料庫連線字串
         private string ConnectionString
@@ -72,7 +105,7 @@ namespace DevExpressSample
         {
             if (!IsPostBack)
             {
-                // 綁定資料到 GridView
+                // 一次性從 Oracle 資料庫中載入所有資料
                 BindGridView();
                 
                 // 初始化下拉選單
@@ -82,29 +115,7 @@ namespace DevExpressSample
         
         protected void ASPxGridView1_Init(object sender, EventArgs e)
         {
-            if (!IsPostBack)
-            {
-                // 重置篩選條件
-                ASPxGridView1.FilterExpression = string.Empty;
-            }
-        }
-        
-        protected void AreaFilter_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            ASPxComboBox comboBox = sender as ASPxComboBox;
-            if (comboBox != null && !string.IsNullOrEmpty(comboBox.Value.ToString()))
-            {
-                string selectedArea = comboBox.Value.ToString();
-                // 設定篩選表達式，使用 Contains 函數來篩選包含指定區域的資料
-                ASPxGridView1.FilterExpression = string.Format("[Area] LIKE '%{0}%'", selectedArea);
-                ASPxGridView1.DataBind();
-            }
-            else
-            {
-                // 清除篩選條件
-                ASPxGridView1.FilterExpression = string.Empty;
-                ASPxGridView1.DataBind();
-            }
+            // 這裡不需要做什麼，因為我們使用客戶端篩選
         }
         
         private void InitializeAreaComboBox()
@@ -119,31 +130,20 @@ namespace DevExpressSample
                 // 添加「全部」選項
                 areaComboBox.Items.Add("全部", "");
                 
-                // 從 Oracle 資料庫中獲取不重複的區域值
-                using (OracleConnection conn = new OracleConnection(ConnectionString))
+                // 從已綁定的資料源中提取不重複的區域值
+                DataTable dt = ASPxGridView1.DataSource as DataTable;
+                if (dt != null)
                 {
-                    try
+                    List<string> areas = new List<string>();
+                    
+                    foreach (DataRow row in dt.Rows)
                     {
-                        conn.Open();
-                        // 請根據實際表名和欄位名修改以下 SQL 查詢
-                        string sql = "SELECT DISTINCT Area FROM YourTableName ORDER BY Area";
-                        using (OracleCommand cmd = new OracleCommand(sql, conn))
+                        string area = row["Area"].ToString();
+                        if (!areas.Contains(area))
                         {
-                            using (OracleDataReader reader = cmd.ExecuteReader())
-                            {
-                                while (reader.Read())
-                                {
-                                    string area = reader["Area"].ToString();
-                                    areaComboBox.Items.Add(area, area);
-                                }
-                            }
+                            areas.Add(area);
+                            areaComboBox.Items.Add(area, area);
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        // 記錄異常
-                        System.Diagnostics.Debug.WriteLine("獲取區域資料錯誤: " + ex.Message);
-                        // 可以加入更多錯誤處理邏輯
                     }
                 }
             }
