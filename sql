@@ -1,81 +1,231 @@
-非常感謝你清楚描述結構，這樣我能更精準推敲問題點。你目前的情況可以總結如下：
+明白了您的情况，现在我更清楚您的代码结构了。基于您描述的代码结构，我可以提供一个针对性的解决方案。
 
-⸻
+您的问题是在 OnRowInserting 事件中无法获取 FREQUENCY 字段的值，而其他字段可以正常获取。这主要是因为您使用了自定义的 EditItemTemplate 包含多个控件来组成一个字段值。
 
-目前情況
-	•	你使用的是 Inline 編輯模式
-	•	GridViewDataColumn FieldName="FREQUENCY" 中的 EditItemTemplate 裡有三個控制項：
-	•	ASPxSpinEdit ID="txtFreqCount" → 顯示次數
-	•	ASPxSpinEdit ID="txtFreqUnitCount" → 顯示單位次數
-	•	ASPxComboBox ID="cmbFreqUnit" → 顯示「天」、「週」等單位
-	•	這三個控制項的值來自 Eval(FREQUENCY) 分解後呈現
-	•	問題是你在 RowInserting 裡抓不到這三個控制項
+以下是一个适合您情况的解决方案：
 
-⸻
+### 解决方案1：使用隐藏字段和客户端脚本
 
-問題根源
+这是最简单、最不侵入的解决方案。在您的 EditItemTemplate 中添加一个隐藏字段，然后使用客户端脚本在提交前合并值：
 
-這裡的關鍵點是：你把值設在 Value='<%# GetFreqXXX(Eval("FREQUENCY")) %>'，但並沒有 Bind() 回資料源。
-這導致 DevExpress 不會把控制項值自動寫入 e.NewValues["FREQUENCY"]，而你又在 RowInserting 裡用 FindEditRowCellTemplateControl() 嘗試抓這三個控制項，卻失敗。
+```aspx
+<dx:GridViewDataColumn FieldName="FREQUENCY" Caption="频率">
+  <EditItemTemplate>
+    <div>
+      <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" Value='<%# GetFreqValue(Eval("FREQUENCY")) %>'
+        ClientInstanceName="txtFreqCount">
+        <ClientSideEvents ValueChanged="function(s, e) { UpdateFrequencyField(); }" />
+      </dx:ASPxSpinEdit>
+      
+      <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" Value='<%# GetFreqUnitCounValue(Eval("FREQUENCY")) %>'
+        ClientInstanceName="txtFreqUnitCount">
+        <ClientSideEvents ValueChanged="function(s, e) { UpdateFrequencyField(); }" />
+      </dx:ASPxSpinEdit>
+      
+      <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" Value='<%# GetFreqUnitValue(Eval("FREQUENCY")) %>'
+        ClientInstanceName="cmbFreqUnit">
+        <Items>
+          <dx:ListEditItem Text="天" Value="day" />
+          <dx:ListEditItem Text="週" Value="week" />
+        </Items>
+        <ClientSideEvents SelectedIndexChanged="function(s, e) { UpdateFrequencyField(); }" />
+      </dx:ASPxComboBox>
+      
+      <!-- 添加隐藏字段，使用实际的 FieldName -->
+      <dx:ASPxTextBox ID="hiddenFrequency" runat="server" 
+          ClientInstanceName="hiddenFrequency" 
+          ClientVisible="false"
+          Value='<%# Eval("FREQUENCY") %>'
+          Name="FREQUENCY">
+      </dx:ASPxTextBox>
+    </div>
+    
+    <script type="text/javascript">
+      function UpdateFrequencyField() {
+        var value = txtFreqCount.GetValue();
+        var unitCount = txtFreqUnitCount.GetValue();
+        var unit = cmbFreqUnit.GetValue();
+        hiddenFrequency.SetValue(value + '|' + unitCount + '|' + unit);
+      }
+      
+      // 页面加载时初始化一次
+      $(document).ready(function() {
+        if (typeof txtFreqCount !== 'undefined' && 
+            typeof txtFreqUnitCount !== 'undefined' && 
+            typeof cmbFreqUnit !== 'undefined') {
+          UpdateFrequencyField();
+        }
+      });
+    </script>
+  </EditItemTemplate>
+</dx:GridViewDataColumn>
+```
 
-根據你描述的樣子，控制項找不到的原因，十之八九是因為 Grid.Columns["FREQUENCY"] 無法對應到那一欄。
+这样当您在 OnRowInserting 事件中，e.NewValues["FREQUENCY"] 就会包含合并后的值。
 
-⸻
+### 解决方案2：修改 OnRowInserting 事件处理
 
-解法一：確認抓欄位方式正確（極可能是這個問題）
+如果您不想或不能修改前端代码，可以尝试在后台事件中查找并获取控件值：
 
-請這樣寫：
-
-GridViewDataColumn freqCol = ASPxGridView1.Columns.OfType<GridViewDataColumn>()
-    .FirstOrDefault(c => c.FieldName == "FREQUENCY");
-
-var txtFreqCount = ASPxGridView1.FindEditRowCellTemplateControl(freqCol, "txtFreqCount") as ASPxSpinEdit;
-var txtFreqUnitCount = ASPxGridView1.FindEditRowCellTemplateControl(freqCol, "txtFreqUnitCount") as ASPxSpinEdit;
-var cmbFreqUnit = ASPxGridView1.FindEditRowCellTemplateControl(freqCol, "cmbFreqUnit") as ASPxComboBox;
-
-這段最關鍵的是 FirstOrDefault(c => c.FieldName == "FREQUENCY")，因為直接用 grid.Columns["FREQUENCY"] 可能會取錯欄位（例如是 CommandColumn 或 TemplateColumn 沒有 FieldName）。
-
-這段會找出正確的 frequency 欄位，再去抓控制項。
-
-⸻
-
-解法二（備案）：改用 Page.PreRender 或 HtmlEditFormCreated 先抓控制項
-
-如果上面還是找不到，可以改成預先抓：
-
-private ASPxSpinEdit _txtFreqCount;
-private ASPxSpinEdit _txtFreqUnitCount;
-private ASPxComboBox _cmbFreqUnit;
-
-protected void ASPxGridView1_HtmlRowPrepared(object sender, ASPxGridViewTableRowEventArgs e)
+```csharp
+protected void YourGrid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
 {
-    if (e.RowType == GridViewRowType.Edit && ASPxGridView1.IsNewRowEditing)
+    ASPxGridView grid = sender as ASPxGridView;
+    
+    // 尝试方法1：使用GetChildControl查找
+    Control newFormRow = grid.FindControl("DXInsertForm");
+    
+    ASPxSpinEdit txtFreqCount = null;
+    ASPxSpinEdit txtFreqUnitCount = null;
+    ASPxComboBox cmbFreqUnit = null;
+    
+    if (newFormRow != null)
     {
-        var freqCol = ASPxGridView1.Columns.OfType<GridViewDataColumn>()
-            .FirstOrDefault(c => c.FieldName == "FREQUENCY");
-
-        _txtFreqCount = ASPxGridView1.FindEditRowCellTemplateControl(freqCol, "txtFreqCount") as ASPxSpinEdit;
-        _txtFreqUnitCount = ASPxGridView1.FindEditRowCellTemplateControl(freqCol, "txtFreqUnitCount") as ASPxSpinEdit;
-        _cmbFreqUnit = ASPxGridView1.FindEditRowCellTemplateControl(freqCol, "cmbFreqUnit") as ASPxComboBox;
+        // 可能需要调整控件查找的路径，您可能需要递归查找
+        txtFreqCount = FindControlRecursive(newFormRow, "txtFreqCount") as ASPxSpinEdit;
+        txtFreqUnitCount = FindControlRecursive(newFormRow, "txtFreqUnitCount") as ASPxSpinEdit;
+        cmbFreqUnit = FindControlRecursive(newFormRow, "cmbFreqUnit") as ASPxComboBox;
     }
+    
+    // 如果找到了控件，从控件中获取值并合并
+    if (txtFreqCount != null && txtFreqUnitCount != null && cmbFreqUnit != null)
+    {
+        string frequencyStr = string.Format("{0}|{1}|{2}", 
+            txtFreqCount.Value, 
+            txtFreqUnitCount.Value, 
+            cmbFreqUnit.Value);
+        
+        e.NewValues["FREQUENCY"] = frequencyStr;
+    }
+    else
+    {
+        // 尝试方法2：从请求表单中获取值
+        // DevExpress控件的ClientInstanceName会在提交表单时使用
+        if (Page.Request.Form["txtFreqCount"] != null &&
+            Page.Request.Form["txtFreqUnitCount"] != null &&
+            Page.Request.Form["cmbFreqUnit"] != null)
+        {
+            string frequencyStr = string.Format("{0}|{1}|{2}", 
+                Page.Request.Form["txtFreqCount"], 
+                Page.Request.Form["txtFreqUnitCount"], 
+                Page.Request.Form["cmbFreqUnit"]);
+            
+            e.NewValues["FREQUENCY"] = frequencyStr;
+        }
+        else
+        {
+            // 设置默认值
+            e.NewValues["FREQUENCY"] = "1|1|day";
+        }
+    }
+    
+    // 继续处理其他值...
 }
 
-protected void ASPxGridView1_RowInserting(object sender, ASPxDataInsertingEventArgs e)
+// 递归查找控件的辅助方法
+private Control FindControlRecursive(Control root, string controlID)
 {
-    if (_txtFreqCount != null && _txtFreqUnitCount != null && _cmbFreqUnit != null)
+    if (root.ID == controlID)
+        return root;
+        
+    foreach (Control c in root.Controls)
     {
-        e.NewValues["FREQUENCY"] = $"{_txtFreqCount.Value},{_txtFreqUnitCount.Value},{_cmbFreqUnit.Value}";
+        Control found = FindControlRecursive(c, controlID);
+        if (found != null)
+            return found;
     }
+    
+    return null;
 }
+```
 
+### 解决方案3：使用 ASPxCallback 或 ASPxCallbackPanel
 
+如果上述两种方法都不适用，可以考虑使用 ASPxCallback 或 ASPxCallbackPanel 进行异步提交：
 
-⸻
+```aspx
+<dx:ASPxCallback ID="freqCallback" runat="server" OnCallback="freqCallback_Callback" ClientInstanceName="freqCallback">
+    <ClientSideEvents CallbackComplete="function(s, e) { 
+        if (e.result) {
+            // 提交成功后刷新网格
+            ASPxGridView1.Refresh();
+        }
+    }" />
+</dx:ASPxCallback>
 
-最後建議
+<script type="text/javascript">
+    function SubmitNewRow() {
+        // 获取所有需要的值
+        var freqCount = txtFreqCount.GetValue();
+        var freqUnitCount = txtFreqUnitCount.GetValue();
+        var freqUnit = cmbFreqUnit.GetValue();
+        
+        // 其他字段的值
+        var otherField1 = someOtherControl.GetValue();
+        
+        // 通过回调提交数据
+        freqCallback.PerformCallback(JSON.stringify({
+            freqCount: freqCount,
+            freqUnitCount: freqUnitCount,
+            freqUnit: freqUnit,
+            otherField1: otherField1
+        }));
+        
+        return false; // 阻止默认提交
+    }
+</script>
+```
 
-如果你這樣還是抓不到，可以在 RowInserting 裡面加個測試 log 或 throw new Exception("控制項是 null")，這樣可以確定是 控制項真的不存在 還是 找的方式錯了。
+然后在后台处理回调:
 
-⸻
+```csharp
+protected void freqCallback_Callback(object source, DevExpress.Web.CallbackEventArgs e)
+{
+    // 解析JSON数据
+    JavaScriptSerializer serializer = new JavaScriptSerializer();
+    Dictionary<string, object> values = serializer.Deserialize<Dictionary<string, object>>(e.Parameter);
+    
+    // 组合频率值
+    string freqCount = values["freqCount"].ToString();
+    string freqUnitCount = values["freqUnitCount"].ToString();
+    string freqUnit = values["freqUnit"].ToString();
+    
+    string frequencyStr = string.Format("{0}|{1}|{2}", freqCount, freqUnitCount, freqUnit);
+    
+    // 创建新行
+    DataTable dt = ViewState["GridData"] as DataTable;
+    DataRow newRow = dt.NewRow();
+    newRow["FREQUENCY"] = frequencyStr;
+    newRow["OtherField1"] = values["otherField1"];
+    
+    // 添加行并重新绑定
+    dt.Rows.Add(newRow);
+    ASPxGridView1.DataSource = dt;
+    ASPxGridView1.DataBind();
+    
+    e.Result = "true"; // 返回成功标志
+}
+```
 
-如果你願意我可以幫你模擬寫一份完整的簡化範例，讓你對照使用，要嗎？
+### 基于您现有代码的最佳建议：
+
+考虑到您提供的信息和结构，我建议采用解决方案1（添加隐藏字段），这是最简单且侵入性最小的方法。如果您不能修改前端代码，那么解决方案2（修改后台代码查找控件）可能是您的最佳选择。
+
+不管您选择哪种解决方案，为了调试目的，先在 OnRowInserting 事件中添加代码查看 e.NewValues 集合的内容：
+
+```csharp
+protected void YourGrid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+{
+    string keys = string.Join(", ", e.NewValues.Keys.Cast<string>());
+    string logMsg = "可用的键: " + keys;
+    
+    // 记录到日志或显示在页面上
+    System.Diagnostics.Debug.WriteLine(logMsg);
+    
+    // 继续处理...
+}
+```
+
+这将帮助您确认 FREQUENCY 字段是否确实缺失，以及哪些字段是可用的。
+
+希望以上建议能够帮助您解决问题！​​​​​​​​​​​​​​​​
