@@ -1,46 +1,56 @@
-很好！你提到重點了：
-你在 Inline 新增模式（IsNewRowEditing） 使用 FindEditRowCellTemplateControl，但卻「取不到值」。這是 DevExpress Grid 在 inline 插入模式下一個常見的「陷阱」。
+了解了，你的需求是這樣的：
+	•	只有一個資料欄位 frequency，但
+	•	讓使用者用三個輸入欄位（次數、數量、單位）來輸入這個值，例如：3 次 / 2 天 → 3,2,Day。
+
+這其實是很常見的「複合欄位編輯」情境。既然你想保留這個結構（單欄顯示多個輸入），那我們可以採取這樣的方式來處理：
 
 ⸻
 
-為什麼 FindEditRowCellTemplateControl() 在 RowInserting 時找不到值？
-
-因為在 RowInserting 事件觸發的時候，Grid 的內部控制項還沒完全建立完畢，或者你其實沒有使用 FieldName 對應的方式去包裝那三個控制項，導致它不被 Grid 當成編輯欄位的子控制項，也就不能正確使用 FindEditRowCellTemplateControl() 找到。
+最推薦解法：在 RowInserting 裡仍可取得控制項的值，關鍵是：
+	1.	確認你是在 Inline Edit 模式下運作（不是 EditForm）
+	2.	確認你使用的 GridViewDataColumn 的 FieldName 是正確的
+	3.	使用 FindEditRowCellTemplateControl() 要指定對的欄位（就是設定了 FieldName="frequency" 的欄位）
 
 ⸻
 
-正確處理方式
+範例：完整支援 Inline Insert 複合欄位的方式
 
-解法 A：改用 GridView.HtmlRowPrepared 或 GridView.HtmlEditFormCreated 暫存控制項
+1. GridView 標記（只貼 frequency 欄位）
 
-你可以先在 HtmlEditFormCreated 找到那些控制項，然後在 RowInserting 裡透過變數取值。
+<dx:GridViewDataColumn FieldName="frequency" Caption="頻率">
+    <EditItemTemplate>
+        <div style="display:flex;gap:5px;">
+            <dx:ASPxSpinEdit ID="spnValue" runat="server" Width="50px" />
+            <dx:ASPxSpinEdit ID="spnCount" runat="server" Width="50px" />
+            <dx:ASPxComboBox ID="cmbUnit" runat="server" Width="80px">
+                <Items>
+                    <dx:ListEditItem Text="天" Value="Day" />
+                    <dx:ListEditItem Text="週" Value="Week" />
+                    <dx:ListEditItem Text="月" Value="Month" />
+                </Items>
+            </dx:ASPxComboBox>
+        </div>
+    </EditItemTemplate>
+</dx:GridViewDataColumn>
 
-範例：
+2. 後端程式碼：RowInserting
 
-// 全域暫存控制項參考
-private ASPxSpinEdit _spnValue, _spnCount;
-private ASPxComboBox _cmbUnit;
-
-protected void ASPxGridView1_HtmlEditFormCreated(object sender, ASPxGridViewEditFormEventArgs e)
+protected void ASPxGridView1_RowInserting(object sender, ASPxDataInsertingEventArgs e)
 {
     var grid = sender as ASPxGridView;
-    if (grid.IsNewRowEditing)
-    {
-        _spnValue = grid.FindEditRowCellTemplateControl(
-            (GridViewDataColumn)grid.Columns["frequency"], "spnValue") as ASPxSpinEdit;
-        _spnCount = grid.FindEditRowCellTemplateControl(
-            (GridViewDataColumn)grid.Columns["frequency"], "spnCount") as ASPxSpinEdit;
-        _cmbUnit = grid.FindEditRowCellTemplateControl(
-            (GridViewDataColumn)grid.Columns["frequency"], "cmbUnit") as ASPxComboBox;
-    }
-}
 
-protected void ASPxGridView1_RowInserting(object sender, ASPxDataInsertingEventArgs e)
-{
-    if (_spnValue != null && _spnCount != null && _cmbUnit != null)
+    // 必須對應欄位名稱 "frequency"
+    var spnValue = grid.FindEditRowCellTemplateControl(
+        (GridViewDataColumn)grid.Columns["frequency"], "spnValue") as ASPxSpinEdit;
+    var spnCount = grid.FindEditRowCellTemplateControl(
+        (GridViewDataColumn)grid.Columns["frequency"], "spnCount") as ASPxSpinEdit;
+    var cmbUnit = grid.FindEditRowCellTemplateControl(
+        (GridViewDataColumn)grid.Columns["frequency"], "cmbUnit") as ASPxComboBox;
+
+    if (spnValue != null && spnCount != null && cmbUnit != null)
     {
-        string combined = $"{_spnValue.Value},{_spnCount.Value},{_cmbUnit.Value}";
-        e.NewValues["frequency"] = combined;
+        string freq = $"{spnValue.Value},{spnCount.Value},{cmbUnit.Value}";
+        e.NewValues["frequency"] = freq;
     }
 }
 
@@ -48,27 +58,18 @@ protected void ASPxGridView1_RowInserting(object sender, ASPxDataInsertingEventA
 
 ⸻
 
-解法 B：不要用 TemplateControl，直接加三個欄位 + 隱藏合併欄位
+關鍵排查建議
 
-如果你想簡化邏輯又不影響前端樣式，可以這樣做：
-	1.	資料表仍保留一個 frequency 欄位。
-	2.	GridView 中設三個實體欄位：freq_val, freq_count, freq_unit。
-	3.	這三個欄位編輯時是可見的。
-	4.	第四個 frequency 欄位是隱藏欄位，用來存組合後的結果（實際寫入 DB）。
-
-然後你在 RowInserting 中這樣組：
-
-protected void ASPxGridView1_RowInserting(object sender, ASPxDataInsertingEventArgs e)
-{
-    var val = e.NewValues["freq_val"];
-    var cnt = e.NewValues["freq_count"];
-    var unit = e.NewValues["freq_unit"];
-
-    e.NewValues["frequency"] = $"{val},{cnt},{unit}";
-}
-
-這樣就完全不會遇到 FindEditRowCellTemplateControl 找不到的問題了，因為這些值 DevExpress 自己幫你收好了。
+如果這樣你還是抓不到控制項：
+	•	請確認 frequency 欄位的 FieldName 真的叫 frequency，與你程式碼一致。
+	•	請確認你使用的是 Inline 模式（而不是 EditForm）
+	•	確保你的 ASPxGridView 沒有設定 AutoGenerateColumns="True"（會導致找不到欄位）
+	•	確認你沒有在 InitNewRow 裡意外地清掉控制項或值
 
 ⸻
 
-你想保留 Template 的方式嗎？還是想改成欄位方式比較簡單？我可以根據你的 HTML 結構提供直接改法。你也可以貼上那一欄的 GridView 設定（只要 frequency 那一欄即可），我幫你調整成最穩的方式。
+如果你還是抓不到，我可以幫你看更具體的問題，你只需要提供：
+	•	ASPxGridView 的完整欄位定義
+	•	你如何啟用 Insert 模式的（例如按鈕或 StartEditNewRow()）
+
+這樣我就可以直接幫你定位出為什麼抓不到。你要不要貼上來？
