@@ -1,338 +1,281 @@
-好的，我來提供完整的 ASPX 和后台代码，确保我们对您的需求理解一致。以下是一个完整的例子，包括 ASPX 页面和对应的代码后台：
+您提出了一个很好的问题。为什么 e.NewValues 可以取到其他列的值，但获取不到 frequency 这个列的值。这是因为 frequency 列的处理方式不同于其他列。我来解释一下原因：
 
-**ASPX 页面：**
+### 问题根本原因
 
-```aspx
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="GridViewExample.aspx.cs" Inherits="YourNamespace.GridViewExample" %>
+1. **标准列 vs 自定义模板列**：
+   - 标准的 GridViewDataTextColumn 会自动将值收集到 e.NewValues 集合中
+   - 而您的 frequency 列使用了 EditItemTemplate 定义了自定义的控件组合，而不是使用标准的绑定方式
 
-<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" 
-    Namespace="DevExpress.Web" TagPrefix="dx" %>
+2. **复合控件问题**：
+   - frequency 列不是单一值，而是由三个不同的控件组合成的值(spinEditValue, spinEditUnitCount, comboBoxUnit)
+   - DevExpress 框架不知道如何自动合并这三个控件的值到一个 frequency 字段
 
-<!DOCTYPE html>
+3. **内联编辑中的特殊处理**：
+   - 在 RowUpdating 中，控件已经渲染并存在于DOM中，所以可以用 FindEditRowCellTemplateControl 找到
+   - 在 RowInserting 中，处理逻辑不同，新行的控件处理方式与已有行的编辑不同
 
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head runat="server">
-    <title>GridView 频率编辑示例</title>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <div>
-            <dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" 
-                OnRowUpdating="ASPxGridView1_RowUpdating" 
-                OnRowInserting="ASPxGridView1_RowInserting"
-                Width="100%" AutoGenerateColumns="False">
-                <SettingsEditing Mode="Inline" NewItemRowPosition="Top" />
-                <SettingsCommandButton>
-                    <NewButton Text="新增" />
-                    <EditButton Text="编辑" />
-                    <DeleteButton Text="删除" />
-                    <UpdateButton Text="保存" />
-                    <CancelButton Text="取消" />
-                </SettingsCommandButton>
-                <Columns>
-                    <dx:GridViewCommandColumn ShowEditButton="true" ShowNewButtonInHeader="true" ShowDeleteButton="true" Width="100" />
-                    <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" Caption="ID" Width="50" />
-                    <dx:GridViewDataTextColumn FieldName="Name" Caption="名称" Width="150" />
-                    <dx:GridViewDataTextColumn FieldName="frequency" Caption="频率" Width="200">
-                        <EditItemTemplate>
-                            <div style="display: flex; align-items: center;">
-                                <!-- 频率值控件 -->
-                                <dx:ASPxSpinEdit ID="spinEditValue" runat="server" 
-                                    Width="80px" 
-                                    MinValue="1" 
-                                    MaxValue="100" 
-                                    Value='<%# GetFrequencyValue(Eval("frequency")) %>'
-                                    ClientInstanceName="spinEditValue">
-                                </dx:ASPxSpinEdit>
-                                
-                                <!-- 频率单位数量控件 -->
-                                <dx:ASPxSpinEdit ID="spinEditUnitCount" runat="server" 
-                                    Width="80px" 
-                                    MinValue="1" 
-                                    MaxValue="100" 
-                                    Value='<%# GetFrequencyUnitCount(Eval("frequency")) %>'
-                                    ClientInstanceName="spinEditUnitCount">
-                                </dx:ASPxSpinEdit>
-                                
-                                <!-- 频率单位控件 -->
-                                <dx:ASPxComboBox ID="comboBoxUnit" runat="server" 
-                                    Width="100px" 
-                                    Value='<%# GetFrequencyUnit(Eval("frequency")) %>'
-                                    ClientInstanceName="comboBoxUnit">
-                                    <Items>
-                                        <dx:ListEditItem Text="秒" Value="second" />
-                                        <dx:ListEditItem Text="分钟" Value="minute" />
-                                        <dx:ListEditItem Text="小时" Value="hour" />
-                                        <dx:ListEditItem Text="天" Value="day" />
-                                        <dx:ListEditItem Text="周" Value="week" />
-                                        <dx:ListEditItem Text="月" Value="month" />
-                                    </Items>
-                                </dx:ASPxComboBox>
-                            </div>
-                        </EditItemTemplate>
-                    </dx:GridViewDataTextColumn>
-                    <!-- 其他列 -->
-                </Columns>
-            </dx:ASPxGridView>
-        </div>
-    </form>
-</body>
-</html>
-```
+### 解决方案
 
-**代码后台（GridViewExample.aspx.cs）：**
+首先，我们可以通过一个简单的方法来确认问题。在 RowInserting 事件中，让我们看看 e.NewValues 集合中到底有哪些值：
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Web;
-using System.Web.UI;
-using System.Web.UI.WebControls;
-using DevExpress.Web;
-
-namespace YourNamespace
+protected void ASPxGridView1_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
 {
-    public partial class GridViewExample : System.Web.UI.Page
+    // 调试代码 - 查看 e.NewValues 集合中的所有键值对
+    string allKeys = "";
+    foreach (string key in e.NewValues.Keys)
     {
-        protected void Page_Load(object sender, EventArgs e)
-        {
-            if (!IsPostBack)
-            {
-                // 绑定数据源
-                BindGridView();
-            }
+        allKeys += key + ": " + e.NewValues[key] + ", ";
+    }
+    // 可以记录到日志或使用其他方式查看这个值
+    System.Diagnostics.Debug.WriteLine("新行插入的所有值: " + allKeys);
+    
+    // 继续其他处理...
+}
+```
+
+针对您的问题，这里有几种可靠的解决方案：
+
+#### 解决方案1：使用客户端脚本合并值
+
+在 ASPX 页面中，为 GridView 添加客户端脚本，在提交前合并这些值：
+
+```aspx
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" 
+    OnRowUpdating="ASPxGridView1_RowUpdating" 
+    OnRowInserting="ASPxGridView1_RowInserting"
+    Width="100%" AutoGenerateColumns="False">
+    <ClientSideEvents BeforeInsert="function(s, e) {
+        // 创建一个隐藏字段来存储合并后的值
+        var value = spinEditValue.GetValue();
+        var unitCount = spinEditUnitCount.GetValue();
+        var unit = comboBoxUnit.GetValue();
+        
+        // 将合并后的值添加到 e.values
+        e.values['frequency'] = value + '|' + unitCount + '|' + unit;
+    }" />
+    <!-- 其他设置 -->
+</dx:ASPxGridView>
+```
+
+#### 解决方案2：使用隐藏字段合并值
+
+在 EditItemTemplate 中添加一个隐藏字段，用于存储合并后的值：
+
+```aspx
+<EditItemTemplate>
+    <div style="display: flex; align-items: center;">
+        <!-- 频率值控件 -->
+        <dx:ASPxSpinEdit ID="spinEditValue" runat="server" 
+            Width="80px" 
+            MinValue="1" 
+            MaxValue="100" 
+            Value='<%# GetFrequencyValue(Eval("frequency")) %>'
+            ClientInstanceName="spinEditValue">
+            <ClientSideEvents ValueChanged="function(s, e) { 
+                UpdateFrequencyField();
+            }" />
+        </dx:ASPxSpinEdit>
+        
+        <!-- 频率单位数量控件 -->
+        <dx:ASPxSpinEdit ID="spinEditUnitCount" runat="server" 
+            Width="80px" 
+            MinValue="1" 
+            MaxValue="100" 
+            Value='<%# GetFrequencyUnitCount(Eval("frequency")) %>'
+            ClientInstanceName="spinEditUnitCount">
+            <ClientSideEvents ValueChanged="function(s, e) { 
+                UpdateFrequencyField();
+            }" />
+        </dx:ASPxSpinEdit>
+        
+        <!-- 频率单位控件 -->
+        <dx:ASPxComboBox ID="comboBoxUnit" runat="server" 
+            Width="100px" 
+            Value='<%# GetFrequencyUnit(Eval("frequency")) %>'
+            ClientInstanceName="comboBoxUnit">
+            <ClientSideEvents SelectedIndexChanged="function(s, e) { 
+                UpdateFrequencyField();
+            }" />
+            <Items>
+                <dx:ListEditItem Text="秒" Value="second" />
+                <dx:ListEditItem Text="分钟" Value="minute" />
+                <dx:ListEditItem Text="小时" Value="hour" />
+                <dx:ListEditItem Text="天" Value="day" />
+                <dx:ListEditItem Text="周" Value="week" />
+                <dx:ListEditItem Text="月" Value="month" />
+            </Items>
+        </dx:ASPxComboBox>
+        
+        <!-- 隐藏字段存储合并后的值 -->
+        <dx:ASPxTextBox ID="hiddenFrequency" runat="server" 
+            ClientInstanceName="hiddenFrequency" 
+            ClientVisible="false"
+            Value='<%# Eval("frequency") %>'
+            Name="frequency">
+        </dx:ASPxTextBox>
+    </div>
+    
+    <script type="text/javascript">
+        function UpdateFrequencyField() {
+            var value = spinEditValue.GetValue();
+            var unitCount = spinEditUnitCount.GetValue();
+            var unit = comboBoxUnit.GetValue();
+            hiddenFrequency.SetValue(value + '|' + unitCount + '|' + unit);
         }
+    </script>
+</EditItemTemplate>
+```
 
-        private void BindGridView()
-        {
-            // 创建示例数据
-            DataTable dt = new DataTable();
-            dt.Columns.Add("ID", typeof(int));
-            dt.Columns.Add("Name", typeof(string));
-            dt.Columns.Add("frequency", typeof(string));
+然后在后台代码中，e.NewValues 应该能够获取到这个隐藏字段的值。
 
-            // 添加示例数据
-            dt.Rows.Add(1, "任务1", "2|3|hour");    // 每3小时执行2次
-            dt.Rows.Add(2, "任务2", "1|1|day");     // 每1天执行1次
-            dt.Rows.Add(3, "任务3", "5|2|week");    // 每2周执行5次
+#### 解决方案3：使用 DataItemTemplate 而不是 EditItemTemplate
 
-            ASPxGridView1.DataSource = dt;
-            ASPxGridView1.DataBind();
+您可以使用 DataItemTemplate 而不是 EditItemTemplate，这样可以确保值正确绑定：
 
-            // 保存到 ViewState 中以便在回发后使用
-            ViewState["GridData"] = dt;
-        }
-
-        // 从频率字符串中提取值部分（格式：值|单位数量|单位）
-        protected object GetFrequencyValue(object frequency)
-        {
-            if (frequency == null || string.IsNullOrEmpty(frequency.ToString()))
-                return 1;
-
-            string[] parts = frequency.ToString().Split('|');
-            if (parts.Length >= 1)
-            {
-                int value;
-                if (int.TryParse(parts[0], out value))
-                    return value;
-            }
-            return 1;
-        }
-
-        // 从频率字符串中提取单位数量部分
-        protected object GetFrequencyUnitCount(object frequency)
-        {
-            if (frequency == null || string.IsNullOrEmpty(frequency.ToString()))
-                return 1;
-
-            string[] parts = frequency.ToString().Split('|');
-            if (parts.Length >= 2)
-            {
-                int unitCount;
-                if (int.TryParse(parts[1], out unitCount))
-                    return unitCount;
-            }
-            return 1;
-        }
-
-        // 从频率字符串中提取单位部分
-        protected object GetFrequencyUnit(object frequency)
-        {
-            if (frequency == null || string.IsNullOrEmpty(frequency.ToString()))
-                return "day";
-
-            string[] parts = frequency.ToString().Split('|');
-            if (parts.Length >= 3)
-                return parts[2];
+```aspx
+<dx:GridViewDataTextColumn FieldName="frequency" Caption="频率" Width="200">
+    <DataItemTemplate>
+        <div style="display: flex; align-items: center;">
+            <dx:ASPxSpinEdit ID="spinEditValue" runat="server" 
+                Width="80px" 
+                MinValue="1" 
+                MaxValue="100" 
+                Value='<%# GetFrequencyValue(Eval("frequency")) %>'
+                ClientInstanceName="spinEditValue">
+            </dx:ASPxSpinEdit>
             
-            return "day";
-        }
+            <!-- 其他控件 -->
+        </div>
+    </DataItemTemplate>
+</dx:GridViewDataTextColumn>
+```
 
-        // 行更新事件 - 在这里可以成功获取控件值
-        protected void ASPxGridView1_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+#### 解决方案4：在页面加载时注册控件事件处理
+
+在页面加载时为这些控件添加事件处理程序，以便在值更改时将其保存到静态变量或会话状态：
+
+```csharp
+protected void Page_Load(object sender, EventArgs e)
+{
+    if (!IsPostBack)
+    {
+        // 绑定数据源
+        BindGridView();
+    }
+    
+    // 注册新行模板控件的事件处理程序
+    ASPxGridView1.InitNewRow += ASPxGridView1_InitNewRow;
+}
+
+protected void ASPxGridView1_InitNewRow(object sender, EventArgs e)
+{
+    // 找到新行的控件并注册事件处理程序
+    ASPxGridView grid = sender as ASPxGridView;
+    ASPxSpinEdit spinEditValue = FindControlRecursive(grid, "spinEditValue") as ASPxSpinEdit;
+    if (spinEditValue != null)
+    {
+        spinEditValue.ValueChanged += (s, args) => {
+            Session["TempFrequencyValue"] = ((ASPxSpinEdit)s).Value;
+        };
+    }
+    
+    // 也为其他控件注册类似的事件处理程序
+}
+
+// 在 RowInserting 事件中
+protected void ASPxGridView1_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+{
+    // 从会话中获取临时保存的值
+    object value = Session["TempFrequencyValue"];
+    object unitCount = Session["TempFrequencyUnitCount"];
+    object unit = Session["TempFrequencyUnit"];
+    
+    if (value != null && unitCount != null && unit != null)
+    {
+        e.NewValues["frequency"] = string.Format("{0}|{1}|{2}", value, unitCount, unit);
+    }
+    else
+    {
+        // 使用默认值
+        e.NewValues["frequency"] = "1|1|day";
+    }
+    
+    // 其他处理...
+}
+```
+
+#### 解决方案5：使用 DevExpress 的命令按钮代替自动提交
+
+您可以禁用自动提交，改为使用自定义按钮来提交：
+
+```aspx
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" KeyFieldName="ID" 
+    OnRowUpdating="ASPxGridView1_RowUpdating" 
+    OnRowInserting="ASPxGridView1_RowInserting"
+    Width="100%" AutoGenerateColumns="False">
+    <SettingsEditing Mode="Inline" NewItemRowPosition="Top" />
+    <Templates>
+        <NewRow>
+            <!-- 自定义新行模板 -->
+            <div>
+                <dx:ASPxSpinEdit ID="spinEditValue" runat="server" Width="80px" MinValue="1" MaxValue="100" Value="1"></dx:ASPxSpinEdit>
+                <dx:ASPxSpinEdit ID="spinEditUnitCount" runat="server" Width="80px" MinValue="1" MaxValue="100" Value="1"></dx:ASPxSpinEdit>
+                <dx:ASPxComboBox ID="comboBoxUnit" runat="server" Width="100px" Value="day">
+                    <Items>
+                        <dx:ListEditItem Text="秒" Value="second" />
+                        <!-- 其他选项 -->
+                    </Items>
+                </dx:ASPxComboBox>
+                
+                <dx:ASPxButton ID="btnInsert" runat="server" Text="插入" AutoPostBack="true" 
+                    OnClick="btnInsert_Click">
+                </dx:ASPxButton>
+            </div>
+        </NewRow>
+    </Templates>
+    <!-- 其他设置 -->
+</dx:ASPxGridView>
+```
+
+然后在后台代码中实现按钮的点击事件：
+
+```csharp
+protected void btnInsert_Click(object sender, EventArgs e)
+{
+    ASPxButton btn = sender as ASPxButton;
+    if (btn != null)
+    {
+        // 找到控件
+        ASPxSpinEdit spinEditValue = FindControlRecursive(btn.Parent, "spinEditValue") as ASPxSpinEdit;
+        ASPxSpinEdit spinEditUnitCount = FindControlRecursive(btn.Parent, "spinEditUnitCount") as ASPxSpinEdit;
+        ASPxComboBox comboBoxUnit = FindControlRecursive(btn.Parent, "comboBoxUnit") as ASPxComboBox;
+        
+        if (spinEditValue != null && spinEditUnitCount != null && comboBoxUnit != null)
         {
-            // 查找编辑行中的控件
-            ASPxGridView grid = sender as ASPxGridView;
+            // 创建新行数据
+            string frequencyStr = string.Format("{0}|{1}|{2}", 
+                spinEditValue.Value, 
+                spinEditUnitCount.Value, 
+                comboBoxUnit.Value);
             
-            // 使用 FindEditRowCellTemplateControl 方法找到控件
-            ASPxSpinEdit spinEditValue = grid.FindEditRowCellTemplateControl(
-                grid.Columns["frequency"] as GridViewDataColumn, "spinEditValue") as ASPxSpinEdit;
-                
-            ASPxSpinEdit spinEditUnitCount = grid.FindEditRowCellTemplateControl(
-                grid.Columns["frequency"] as GridViewDataColumn, "spinEditUnitCount") as ASPxSpinEdit;
-                
-            ASPxComboBox comboBoxUnit = grid.FindEditRowCellTemplateControl(
-                grid.Columns["frequency"] as GridViewDataColumn, "comboBoxUnit") as ASPxComboBox;
-
-            if (spinEditValue != null && spinEditUnitCount != null && comboBoxUnit != null)
-            {
-                // 组合成频率字符串
-                string frequencyStr = string.Format("{0}|{1}|{2}", 
-                    spinEditValue.Value, 
-                    spinEditUnitCount.Value, 
-                    comboBoxUnit.Value);
-                
-                e.NewValues["frequency"] = frequencyStr;
-            }
-
-            // 更新数据源
-            DataTable dt = ViewState["GridData"] as DataTable;
-            if (dt != null)
-            {
-                DataRow row = dt.Rows.Find(e.Keys["ID"]);
-                if (row != null)
-                {
-                    foreach (string key in e.NewValues.Keys)
-                    {
-                        row[key] = e.NewValues[key];
-                    }
-                }
-                ViewState["GridData"] = dt;
-                ASPxGridView1.DataSource = dt;
-                ASPxGridView1.DataBind();
-            }
-
-            e.Cancel = true; // 取消默认更新，因为我们手动更新了
-        }
-
-        // 行插入事件 - 这里之前无法获取控件值
-        protected void ASPxGridView1_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-        {
-            ASPxGridView grid = sender as ASPxGridView;
-            
-            // 方法1：尝试使用类似 FindEditRowCellTemplateControl 的方式（但需要调整）
-            GridViewDataColumn freqColumn = grid.Columns["frequency"] as GridViewDataColumn;
-            
-            // 尝试找到新行中的控件
-            ASPxSpinEdit spinEditValue = null;
-            ASPxSpinEdit spinEditUnitCount = null;
-            ASPxComboBox comboBoxUnit = null;
-            
-            // 遍历所有控件查找我们需要的
-            Control container = grid.FindControl("DXInsertForm");
-            if (container != null)
-            {
-                spinEditValue = FindControlRecursive(container, "spinEditValue") as ASPxSpinEdit;
-                spinEditUnitCount = FindControlRecursive(container, "spinEditUnitCount") as ASPxSpinEdit;
-                comboBoxUnit = FindControlRecursive(container, "comboBoxUnit") as ASPxComboBox;
-            }
-            
-            // 方法2：尝试使用 HttpContext.Current.Request.Form 获取前端提交的值
-            if (spinEditValue == null || spinEditUnitCount == null || comboBoxUnit == null)
-            {
-                // 获取前端控件提交的表单值
-                string valueKey = "spinEditValue";
-                string unitCountKey = "spinEditUnitCount";
-                string unitKey = "comboBoxUnit";
-                
-                object value = null;
-                object unitCount = null;
-                object unit = null;
-                
-                // 从表单中获取值
-                if (HttpContext.Current.Request.Form[valueKey] != null)
-                    value = HttpContext.Current.Request.Form[valueKey];
-                
-                if (HttpContext.Current.Request.Form[unitCountKey] != null)
-                    unitCount = HttpContext.Current.Request.Form[unitCountKey];
-                
-                if (HttpContext.Current.Request.Form[unitKey] != null)
-                    unit = HttpContext.Current.Request.Form[unitKey];
-                
-                // 如果能够获取到这些值，组合成频率字符串
-                if (value != null && unitCount != null && unit != null)
-                {
-                    e.NewValues["frequency"] = string.Format("{0}|{1}|{2}", value, unitCount, unit);
-                }
-                else
-                {
-                    // 设置默认值
-                    e.NewValues["frequency"] = "1|1|day";
-                }
-            }
-            else
-            {
-                // 如果成功找到了控件，从控件中获取值
-                string frequencyStr = string.Format("{0}|{1}|{2}", 
-                    spinEditValue.Value, 
-                    spinEditUnitCount.Value, 
-                    comboBoxUnit.Value);
-                
-                e.NewValues["frequency"] = frequencyStr;
-            }
-
-            // 更新数据源
+            // 添加到数据源
             DataTable dt = ViewState["GridData"] as DataTable;
             if (dt != null)
             {
                 DataRow row = dt.NewRow();
-                row["ID"] = dt.Rows.Count + 1; // 自动生成 ID
-                
-                foreach (string key in e.NewValues.Keys)
-                {
-                    if (dt.Columns.Contains(key))
-                        row[key] = e.NewValues[key];
-                }
-                
+                row["ID"] = dt.Rows.Count + 1;
+                row["Name"] = "新任务";  // 您可能需要从其他控件获取
+                row["frequency"] = frequencyStr;
                 dt.Rows.Add(row);
+                
                 ViewState["GridData"] = dt;
                 ASPxGridView1.DataSource = dt;
                 ASPxGridView1.DataBind();
             }
-
-            e.Cancel = true; // 取消默认插入，因为我们手动插入了
-        }
-        
-        // 递归查找控件
-        private Control FindControlRecursive(Control root, string controlID)
-        {
-            if (root.ID == controlID)
-                return root;
-                
-            foreach (Control c in root.Controls)
-            {
-                Control found = FindControlRecursive(c, controlID);
-                if (found != null)
-                    return found;
-            }
-            
-            return null;
         }
     }
 }
 ```
 
-这个示例包含了完整的 ASPX 页面和后台代码，实现了您的需求：
-
-1. 使用了 DevExpress 19.2 的 ASPxGridView 控件和内联编辑模式
-2. 在频率列中使用了三个控件：ASPxSpinEdit (值)、ASPxSpinEdit (单位数量) 和 ASPxComboBox (单位)
-3. 在行更新 (OnRowUpdating) 事件中使用 FindEditRowCellTemplateControl 方法成功获取控件值
-4. 在行插入 (OnRowInserting) 事件中提供了两种方法尝试获取控件值:
-   - 通过递归查找控件
-   - 直接从表单提交中获取值
-
-您在实际使用中可能需要根据您的具体项目结构和数据源调整代码，特别是数据绑定和保存的部分。但这个示例应该能够解决您在 OnRowInserting 事件中无法获取控件值的问题。
-
-希望这个完整的示例能够帮助您解决问题！如果您还有任何疑问或需要进一步的调整，请告诉我。​​​​​​​​​​​​​​​​
+这些解决方案中，最简单且最可靠的是方案2（使用隐藏字段）和方案1（使用客户端脚本）。您可以根据您的项目需求选择适合您的解决方案。​​​​​​​​​​​​​​​​
