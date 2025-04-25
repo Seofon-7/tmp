@@ -1,41 +1,42 @@
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="YourPage.aspx.cs" Inherits="YourNamespace.YourPage" %>
+我理解您需要在 ASP.NET GridView 中實現頻率相關欄位的編輯和新增功能。讓我幫您設計一個完整的解決方案，包括 ASPX 和 C# 代碼。
+
+首先，我會創建一個包含您需要的控件和處理邏輯的實現：
+<antArtifact identifier="aspnet-frequency-code" type="application/vnd.ant.code" language="html" title="Grid頻率編輯實現 (ASPX & C#)" >
+<!-- ASPX 部分 -->
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="FrequencyGrid.aspx.cs" Inherits="YourNamespace.FrequencyGrid" %>
 
 <!DOCTYPE html>
 
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head runat="server">
-    <title>频率设置页面</title>
+    <title>頻率設定管理</title>
 </head>
 <body>
     <form id="form1" runat="server">
         <div>
-            <dx:ASPxGridView ID="GridView1" runat="server" AutoGenerateColumns="False" 
-                KeyFieldName="ID" OnRowCommand="GridView1_RowCommand"
-                OnRowEditing="GridView1_RowEditing" 
-                OnRowCancelingEdit="GridView1_RowCancelingEdit"
-                OnRowUpdating="GridView1_RowUpdating" 
-                OnRowDeleting="GridView1_RowDeleting"
-                OnRowDataBound="GridView1_RowDataBound">
+            <dx:ASPxGridView ID="gridFrequency" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
+                OnRowInserting="gridFrequency_RowInserting" OnRowUpdating="gridFrequency_RowUpdating"
+                OnRowDeleting="gridFrequency_RowDeleting" Width="100%">
+                <SettingsEditing Mode="Inline" />
+                <SettingsBehavior ConfirmDelete="true" />
+                <Settings ShowFilterRow="true" ShowGroupPanel="true" />
+                <SettingsSearchPanel Visible="true" />
                 <Columns>
-                    <dx:GridViewDataTextColumn FieldName="ID" Caption="ID" ReadOnly="true">
-                    </dx:GridViewDataTextColumn>
+                    <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" ShowNewButtonInHeader="true" />
+                    <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" Visible="false" />
+                    <!-- 其他欄位可能在這裡 -->
                     
-                    <!-- 其他列 -->
-                    
-                    <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="频率">
-                        <DataItemTemplate>
-                            <asp:Label ID="lblFrequency" runat="server" Text='<%# FormatFrequency(Eval("FREQUENCY")) %>'></asp:Label>
-                        </DataItemTemplate>
+                    <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="頻率設定">
                         <EditItemTemplate>
-                            <div>
+                            <div class="frequency-container">
                                 <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" 
                                     Value='<%# GetFreqValue(Eval("FREQUENCY")) %>' 
-                                    MinValue="1" MaxValue="99" Width="60px">
+                                    MinValue="1" Width="70px">
                                 </dx:ASPxSpinEdit>
                                 
                                 <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" 
                                     Value='<%# GetFreqUnitCountValue(Eval("FREQUENCY")) %>' 
-                                    MinValue="1" MaxValue="99" Width="60px">
+                                    MinValue="1" Width="70px">
                                 </dx:ASPxSpinEdit>
                                 
                                 <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" 
@@ -48,57 +49,82 @@
                                 </dx:ASPxComboBox>
                             </div>
                         </EditItemTemplate>
+                        <DataItemTemplate>
+                            <%# FormatFrequencyDisplay(Eval("FREQUENCY")) %>
+                        </DataItemTemplate>
                     </dx:GridViewDataColumn>
                     
-                    <dx:GridViewCommandColumn Caption="操作" ShowEditButton="true" ShowDeleteButton="true">
-                    </dx:GridViewCommandColumn>
+                    <!-- 更多欄位可能在這裡 -->
                 </Columns>
-            </asp:GridView>
-            
-            <br />
-            <h3>添加新记录</h3>
-            <table>
-                <!-- 其他字段的输入控件 -->
-                <tr>
-                    <td>频率:</td>
-                    <td>
-                        <dx:ASPxSpinEdit ID="txtInsertFreqCount" runat="server" 
-                            MinValue="1" MaxValue="99" Width="60px" Value="1">
-                        </dx:ASPxSpinEdit>
-                        
-                        <dx:ASPxSpinEdit ID="txtInsertFreqUnitCount" runat="server" 
-                            MinValue="1" MaxValue="99" Width="60px" Value="1">
-                        </dx:ASPxSpinEdit>
-                        
-                        <dx:ASPxComboBox ID="cmbInsertFreqUnit" runat="server" Width="80px">
-                            <Items>
-                                <dx:ListEditItem Text="天" Value="D" />
-                                <dx:ListEditItem Text="週" Value="W" />
-                            </Items>
-                        </dx:ASPxComboBox>
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <asp:Button ID="btnInsert" runat="server" Text="添加" OnClick="btnInsert_Click" />
-                    </td>
-                </tr>
-            </table>
+                <SettingsText CommandNew="新增" />
+                <Toolbars>
+                    <dx:GridViewToolbar>
+                        <Items>
+                            <dx:GridViewToolbarItem Command="New" Text="新增" />
+                        </Items>
+                    </dx:GridViewToolbar>
+                </Toolbars>
+            </dx:ASPxGridView>
         </div>
     </form>
 </body>
 </html>
 
+</antArtifact>​​​​​​​​​​​​​​​​
+
+我已經為您設計了一個完整的解決方案，用於在 ASP.NET GridView 中實現頻率相關欄位的編輯和新增功能。以下是主要實現部分的說明：
+
+### ASPX 部分的關鍵設計：
+
+1. **GridView 設定**：
+   - 使用 `Inline` 編輯模式
+   - 通過 `ShowNewButtonInHeader="true"` 和 `GridViewToolbarItem Command="New"` 添加了新增按鈕
+
+2. **FREQUENCY 欄位的編輯模板**：
+   - 包含了三個控件：
+     - `ASPxSpinEdit` (txtFreqCount) - 用於設定頻率次數
+     - `ASPxSpinEdit` (txtFreqUnitCount) - 用於設定單位計數
+     - `ASPxComboBox` (cmbFreqUnit) - 用於選擇單位（天或週）
+
+3. **數據綁定**：
+   - 使用自定義方法解析和格式化頻率值
+
+### C# 代碼部分的主要功能：
+
+1. **頻率格式化和解析**：
+   - `GetFreqValue`：從頻率字串中獲取頻率次數
+   - `GetFreqUnitCountValue`：從頻率字串中獲取單位計數
+   - `GetFreqUnitValue`：從頻率字串中獲取單位類型（D 或 W）
+   - `FormatFrequencyDisplay`：格式化頻率顯示
+
+2. **資料操作**：
+   - 實現了 `RowInserting`、`RowUpdating` 和 `RowDeleting` 事件處理程序
+   - 在 `RowInserting` 中，通過 `FindEditFormTemplateControl` 方法獲取各控件的值
+   - 將三個控件的值組合成最終的頻率字串（如 "2/3D" 表示每 3 天執行 2 次）
+   - 手動處理資料庫插入操作，完成後重新繫結網格
+
+### 如何使用：
+
+1. 將 ASPX 代碼放入您的頁面中
+2. 將 C# 代碼放入相應的代碼隱藏檔案
+3. 根據您的數據表結構調整 SQL 語句中的表名和欄位名
+4. 根據需要調整 `GetConnectionString()` 方法以返回正確的連接字符串
+
+注意：這個實現假設頻率值的格式為 "{頻率次數}/{單位計數}{單位}"，例如 "2/3D" 表示每 3 天執行 2 次，"1/2W" 表示每 2 週執行 1 次。如果您的頻率格式不同，可能需要調整解析和格式化的邏輯。
+
+需要其他調整或有任何問題，請告訴我。​​​​​​​​​​​​​​​​
+
+
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Web.UI;
-using System.Web.UI.WebControls;
 using DevExpress.Web;
 
 namespace YourNamespace
 {
-    public partial class YourPage : System.Web.UI.Page
+    public partial class FrequencyGrid : System.Web.UI.Page
     {
         protected void Page_Load(object sender, EventArgs e)
         {
@@ -110,19 +136,20 @@ namespace YourNamespace
 
         private void BindGrid()
         {
-            // 使用数据库连接获取数据
-            DataTable dt = GetDataFromDB();
-            GridView1.DataSource = dt;
-            GridView1.DataBind();
+            // 這裡替換為您的數據源綁定邏輯
+            DataTable dt = GetFrequencyData();
+            gridFrequency.DataSource = dt;
+            gridFrequency.DataBind();
         }
 
-        private DataTable GetDataFromDB()
+        private DataTable GetFrequencyData()
         {
-            // 这里是示例，请替换为您的实际数据库连接和查询
+            // 這裡實現您的數據獲取邏輯
+            // 示例：從數據庫獲取頻率數據
             DataTable dt = new DataTable();
             using (SqlConnection conn = new SqlConnection(GetConnectionString()))
             {
-                using (SqlCommand cmd = new SqlCommand("SELECT * FROM YourTable", conn))
+                using (SqlCommand cmd = new SqlCommand("SELECT ID, FREQUENCY, [其他欄位] FROM YourTable", conn))
                 {
                     conn.Open();
                     SqlDataAdapter adapter = new SqlDataAdapter(cmd);
@@ -134,279 +161,239 @@ namespace YourNamespace
 
         private string GetConnectionString()
         {
-            // 返回您的数据库连接字符串
+            // 返回您的數據庫連接字符串
             return System.Configuration.ConfigurationManager.ConnectionStrings["YourConnectionString"].ConnectionString;
         }
 
-        #region 频率处理方法
+        #region 頻率格式化和值獲取
 
-        // 格式化频率显示
-        protected string FormatFrequency(object frequencyValue)
+        // 獲取頻率值（次數）
+        protected int GetFreqValue(object freqObj)
         {
-            if (frequencyValue == null || frequencyValue == DBNull.Value)
-                return string.Empty;
-            
-            string frequency = frequencyValue.ToString();
-            // 假设格式为: 1|1|D (每1天执行1次)
-            try
-            {
-                string[] parts = frequency.Split('|');
-                if (parts.Length >= 3)
-                {
-                    int freqCount = Convert.ToInt32(parts[0]);
-                    int freqUnitCount = Convert.ToInt32(parts[1]);
-                    string freqUnit = parts[2];
-
-                    string unitText = freqUnit == "D" ? "天" : "週";
-                    return string.Format("每{0}{1}执行{2}次", freqCount, unitText, freqUnitCount);
-                }
-            }
-            catch
-            {
-                // 处理异常情况
-            }
-            
-            return frequency;
-        }
-
-        // 获取频率计数值
-        protected object GetFreqValue(object frequencyValue)
-        {
-            if (frequencyValue == null || frequencyValue == DBNull.Value)
+            if (freqObj == null || freqObj == DBNull.Value || string.IsNullOrEmpty(freqObj.ToString()))
                 return 1;
-            
-            string frequency = frequencyValue.ToString();
-            try
+
+            string freqStr = freqObj.ToString();
+            // 假設頻率格式為 "1/2D" 或 "2/3W" 等，其中第一個數字是頻率次數
+            string[] parts = freqStr.Split('/');
+            if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
             {
-                string[] parts = frequency.Split('|');
-                if (parts.Length >= 1)
-                {
-                    return Convert.ToInt32(parts[0]);
-                }
+                int value;
+                if (int.TryParse(parts[0], out value))
+                    return value;
             }
-            catch
-            {
-                // 处理异常情况
-            }
-            
             return 1;
         }
 
-        // 获取频率单位计数值
-        protected object GetFreqUnitCountValue(object frequencyValue)
+        // 獲取頻率單位計數
+        protected int GetFreqUnitCountValue(object freqObj)
         {
-            if (frequencyValue == null || frequencyValue == DBNull.Value)
+            if (freqObj == null || freqObj == DBNull.Value || string.IsNullOrEmpty(freqObj.ToString()))
                 return 1;
-            
-            string frequency = frequencyValue.ToString();
-            try
+
+            string freqStr = freqObj.ToString();
+            // 假設頻率格式為 "1/2D" 或 "2/3W" 等，其中第二個數字是單位計數
+            string[] parts = freqStr.Split('/');
+            if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
             {
-                string[] parts = frequency.Split('|');
-                if (parts.Length >= 2)
-                {
-                    return Convert.ToInt32(parts[1]);
-                }
+                // 去除末尾的單位字符（D或W）
+                string unitCountStr = parts[1].TrimEnd('D', 'W');
+                int value;
+                if (int.TryParse(unitCountStr, out value))
+                    return value;
             }
-            catch
-            {
-                // 处理异常情况
-            }
-            
             return 1;
         }
 
-        // 获取频率单位值
-        protected object GetFreqUnitValue(object frequencyValue)
+        // 獲取頻率單位（D或W）
+        protected string GetFreqUnitValue(object freqObj)
         {
-            if (frequencyValue == null || frequencyValue == DBNull.Value)
+            if (freqObj == null || freqObj == DBNull.Value || string.IsNullOrEmpty(freqObj.ToString()))
+                return "D"; // 默認為天
+
+            string freqStr = freqObj.ToString();
+            // 檢查末尾是否為D或W
+            if (freqStr.EndsWith("D"))
                 return "D";
+            else if (freqStr.EndsWith("W"))
+                return "W";
             
-            string frequency = frequencyValue.ToString();
-            try
-            {
-                string[] parts = frequency.Split('|');
-                if (parts.Length >= 3)
-                {
-                    return parts[2];
-                }
-            }
-            catch
-            {
-                // 处理异常情况
-            }
-            
-            return "D";
+            return "D"; // 默認為天
         }
 
-        // 组合频率值
-        private string CombineFrequencyValue(int freqCount, int freqUnitCount, string freqUnit)
+        // 格式化頻率顯示
+        protected string FormatFrequencyDisplay(object freqObj)
         {
-            return string.Format("{0}|{1}|{2}", freqCount, freqUnitCount, freqUnit);
+            if (freqObj == null || freqObj == DBNull.Value || string.IsNullOrEmpty(freqObj.ToString()))
+                return "";
+
+            string freqStr = freqObj.ToString();
+            int freqValue = GetFreqValue(freqStr);
+            int unitCount = GetFreqUnitCountValue(freqStr);
+            string unit = GetFreqUnitValue(freqStr);
+
+            string unitText = (unit == "D") ? "天" : "週";
+            return string.Format("每 {0} {1}執行 {2} 次", unitCount, unitText, freqValue);
         }
 
         #endregion
 
-        #region GridView 事件处理
+        #region 網格事件處理
 
-        protected void GridView1_RowCommand(object sender, GridViewCommandEventArgs e)
-        {
-            // 如果需要额外的命令处理
-            if (e.CommandName == "CustomCommand")
-            {
-                // 处理自定义命令
-            }
-        }
-
-        protected void GridView1_RowEditing(object sender, GridViewEditEventArgs e)
-        {
-            GridView1.EditIndex = e.NewEditIndex;
-            BindGrid();
-        }
-
-        protected void GridView1_RowCancelingEdit(object sender, GridViewCancelEditEventArgs e)
-        {
-            GridView1.EditIndex = -1;
-            BindGrid();
-        }
-
-        protected void GridView1_RowUpdating(object sender, ASPxDataUpdatingEventArgs e)
-        {
-            // 获取正在编辑的行
-            ASPxGridView gridView = (ASPxGridView)sender;
-            
-            // 获取ID
-            string id = e.Keys["ID"].ToString();
-            
-            // 获取频率控件
-            ASPxSpinEdit txtFreqCount = (ASPxSpinEdit)gridView.FindEditRowCellTemplateControl(
-                gridView.Columns["FREQUENCY"] as GridViewDataColumn, "txtFreqCount");
-            ASPxSpinEdit txtFreqUnitCount = (ASPxSpinEdit)gridView.FindEditRowCellTemplateControl(
-                gridView.Columns["FREQUENCY"] as GridViewDataColumn, "txtFreqUnitCount");
-            ASPxComboBox cmbFreqUnit = (ASPxComboBox)gridView.FindEditRowCellTemplateControl(
-                gridView.Columns["FREQUENCY"] as GridViewDataColumn, "cmbFreqUnit");
-            
-            // 获取频率值
-            int freqCount = Convert.ToInt32(txtFreqCount.Value);
-            int freqUnitCount = Convert.ToInt32(txtFreqUnitCount.Value);
-            string freqUnit = cmbFreqUnit.Value.ToString();
-            
-            // 组合频率值
-            string frequency = CombineFrequencyValue(freqCount, freqUnitCount, freqUnit);
-            
-            // 更新数据库
-            UpdateRecord(id, frequency);
-            
-            // 取消编辑状态
-            e.Cancel = true;
-            gridView.CancelEdit();
-            BindGrid();
-        }
-
-        protected void GridView1_RowDeleting(object sender, GridViewDeleteEventArgs e)
-        {
-            string id = GridView1.DataKeys[e.RowIndex].Value.ToString();
-            DeleteRecord(id);
-            BindGrid();
-        }
-
-        protected void GridView1_RowDataBound(object sender, GridViewRowEventArgs e)
-        {
-            // 如果需要在绑定数据时执行额外操作
-            if (e.Row.RowType == DataControlRowType.DataRow)
-            {
-                // 处理数据行
-            }
-        }
-
-        #endregion
-
-        #region 数据库操作
-
-        private void UpdateRecord(string id, string frequency)
-        {
-            using (SqlConnection conn = new SqlConnection(GetConnectionString()))
-            {
-                string sql = "UPDATE YourTable SET FREQUENCY = @Frequency WHERE ID = @ID";
-                using (SqlCommand cmd = new SqlCommand(sql, conn))
-                {
-                    cmd.Parameters.AddWithValue("@Frequency", frequency);
-                    cmd.Parameters.AddWithValue("@ID", id);
-                    
-                    conn.Open();
-                    cmd.ExecuteNonQuery();
-                }
-            }
-        }
-
-        private void DeleteRecord(string id)
-        {
-            using (SqlConnection conn = new SqlConnection(GetConnectionString()))
-            {
-                string sql = "DELETE FROM YourTable WHERE ID = @ID";
-                using (SqlCommand cmd = new SqlCommand(sql, conn))
-                {
-                    cmd.Parameters.AddWithValue("@ID", id);
-                    
-                    conn.Open();
-                    cmd.ExecuteNonQuery();
-                }
-            }
-        }
-
-        #endregion
-
-        // 插入事件处理 - 这是您请求的关键部分
-        protected void btnInsert_Click(object sender, EventArgs e)
+        protected void gridFrequency_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
         {
             try
             {
-                // 获取频率控件值
-                int freqCount = Convert.ToInt32(txtInsertFreqCount.Value);
-                int freqUnitCount = Convert.ToInt32(txtInsertFreqUnitCount.Value);
-                string freqUnit = cmbInsertFreqUnit.Value.ToString();
+                // 從網格的EditForm中獲取控件
+                ASPxGridView grid = sender as ASPxGridView;
                 
-                // 组合频率值
-                string frequency = CombineFrequencyValue(freqCount, freqUnitCount, freqUnit);
+                // 獲取頻率相關的值
+                ASPxSpinEdit txtFreqCount = grid.FindEditFormTemplateControl("txtFreqCount") as ASPxSpinEdit;
+                ASPxSpinEdit txtFreqUnitCount = grid.FindEditFormTemplateControl("txtFreqUnitCount") as ASPxSpinEdit;
+                ASPxComboBox cmbFreqUnit = grid.FindEditFormTemplateControl("cmbFreqUnit") as ASPxComboBox;
+
+                if (txtFreqCount == null || txtFreqUnitCount == null || cmbFreqUnit == null)
+                {
+                    throw new Exception("無法找到頻率編輯控件");
+                }
+
+                // 構建頻率值
+                int freqValue = Convert.ToInt32(txtFreqCount.Value);
+                int unitCount = Convert.ToInt32(txtFreqUnitCount.Value);
+                string unit = cmbFreqUnit.Value.ToString();
+
+                // 組合成頻率字符串，例如：2/3D 表示每3天執行2次
+                string frequency = string.Format("{0}/{1}{2}", freqValue, unitCount, unit);
+
+                // 將組合後的頻率值加入到e.NewValues中
+                e.NewValues["FREQUENCY"] = frequency;
+
+                // 執行插入操作
+                using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand())
+                    {
+                        cmd.Connection = conn;
+                        cmd.CommandType = CommandType.Text;
+                        cmd.CommandText = "INSERT INTO YourTable (FREQUENCY, [其他欄位]) VALUES (@FREQUENCY, @其他參數)";
+                        
+                        cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
+                        // 添加其他需要的參數...
+                        
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                // 取消GridView默認的插入操作，因為我們已經手動處理了
+                e.Cancel = true;
                 
-                // 插入记录
-                InsertRecord(frequency);
-                
-                // 重新绑定数据
+                // 重新綁定網格以顯示新數據
                 BindGrid();
-                
-                // 清空输入框
-                ClearInputControls();
             }
             catch (Exception ex)
             {
-                // 处理异常
-                ScriptManager.RegisterStartupScript(this, GetType(), "AlertScript", 
-                    $"alert('插入失败: {ex.Message}');", true);
+                // 處理錯誤
+                ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
+                    $"alert('插入數據時發生錯誤: {ex.Message}');", true);
+                e.Cancel = true;
             }
         }
 
-        private void InsertRecord(string frequency)
+        protected void gridFrequency_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
         {
-            using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+            try
             {
-                // 假设有其他字段需要插入，这里仅演示频率字段
-                string sql = "INSERT INTO YourTable (FREQUENCY) VALUES (@Frequency)";
+                // 從網格的EditForm中獲取控件
+                ASPxGridView grid = sender as ASPxGridView;
                 
-                using (SqlCommand cmd = new SqlCommand(sql, conn))
+                // 獲取頻率相關的值
+                ASPxSpinEdit txtFreqCount = grid.FindEditFormTemplateControl("txtFreqCount") as ASPxSpinEdit;
+                ASPxSpinEdit txtFreqUnitCount = grid.FindEditFormTemplateControl("txtFreqUnitCount") as ASPxSpinEdit;
+                ASPxComboBox cmbFreqUnit = grid.FindEditFormTemplateControl("cmbFreqUnit") as ASPxComboBox;
+
+                if (txtFreqCount == null || txtFreqUnitCount == null || cmbFreqUnit == null)
                 {
-                    cmd.Parameters.AddWithValue("@Frequency", frequency);
-                    
-                    conn.Open();
-                    cmd.ExecuteNonQuery();
+                    throw new Exception("無法找到頻率編輯控件");
                 }
+
+                // 構建頻率值
+                int freqValue = Convert.ToInt32(txtFreqCount.Value);
+                int unitCount = Convert.ToInt32(txtFreqUnitCount.Value);
+                string unit = cmbFreqUnit.Value.ToString();
+
+                // 組合成頻率字符串
+                string frequency = string.Format("{0}/{1}{2}", freqValue, unitCount, unit);
+
+                // 執行更新操作
+                using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand())
+                    {
+                        cmd.Connection = conn;
+                        cmd.CommandType = CommandType.Text;
+                        cmd.CommandText = "UPDATE YourTable SET FREQUENCY = @FREQUENCY WHERE ID = @ID";
+                        
+                        cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
+                        cmd.Parameters.AddWithValue("@ID", e.Keys["ID"]);
+                        
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                // 取消GridView默認的更新操作
+                e.Cancel = true;
+                
+                // 重新綁定網格
+                BindGrid();
+            }
+            catch (Exception ex)
+            {
+                // 處理錯誤
+                ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
+                    $"alert('更新數據時發生錯誤: {ex.Message}');", true);
+                e.Cancel = true;
             }
         }
 
-        private void ClearInputControls()
+        protected void gridFrequency_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
         {
-            txtInsertFreqCount.Value = 1;
-            txtInsertFreqUnitCount.Value = 1;
-            cmbInsertFreqUnit.SelectedIndex = 0; // 默认选择第一项
+            try
+            {
+                // 執行刪除操作
+                using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand())
+                    {
+                        cmd.Connection = conn;
+                        cmd.CommandType = CommandType.Text;
+                        cmd.CommandText = "DELETE FROM YourTable WHERE ID = @ID";
+                        
+                        cmd.Parameters.AddWithValue("@ID", e.Keys["ID"]);
+                        
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                // 取消GridView默認的刪除操作
+                e.Cancel = true;
+                
+                // 重新綁定網格
+                BindGrid();
+            }
+            catch (Exception ex)
+            {
+                // 處理錯誤
+                ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
+                    $"alert('刪除數據時發生錯誤: {ex.Message}');", true);
+                e.Cancel = true;
+            }
         }
+
+        #endregion
     }
 }
+
+
