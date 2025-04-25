@@ -9,26 +9,23 @@
 <body>
     <form id="form1" runat="server">
         <div>
-            <asp:GridView ID="GridView1" runat="server" AutoGenerateColumns="False" 
-                DataKeyNames="ID" OnRowCommand="GridView1_RowCommand"
+            <dx:ASPxGridView ID="GridView1" runat="server" AutoGenerateColumns="False" 
+                KeyFieldName="ID" OnRowCommand="GridView1_RowCommand"
                 OnRowEditing="GridView1_RowEditing" 
                 OnRowCancelingEdit="GridView1_RowCancelingEdit"
                 OnRowUpdating="GridView1_RowUpdating" 
                 OnRowDeleting="GridView1_RowDeleting"
                 OnRowDataBound="GridView1_RowDataBound">
                 <Columns>
-                    <asp:TemplateField HeaderText="ID">
-                        <ItemTemplate>
-                            <asp:Label ID="lblID" runat="server" Text='<%# Eval("ID") %>'></asp:Label>
-                        </ItemTemplate>
-                    </asp:TemplateField>
+                    <dx:GridViewDataTextColumn FieldName="ID" Caption="ID" ReadOnly="true">
+                    </dx:GridViewDataTextColumn>
                     
                     <!-- 其他列 -->
                     
-                    <asp:TemplateField HeaderText="频率" SortExpression="FREQUENCY">
-                        <ItemTemplate>
+                    <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="频率">
+                        <DataItemTemplate>
                             <asp:Label ID="lblFrequency" runat="server" Text='<%# FormatFrequency(Eval("FREQUENCY")) %>'></asp:Label>
-                        </ItemTemplate>
+                        </DataItemTemplate>
                         <EditItemTemplate>
                             <div>
                                 <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" 
@@ -51,19 +48,10 @@
                                 </dx:ASPxComboBox>
                             </div>
                         </EditItemTemplate>
-                    </asp:TemplateField>
+                    </dx:GridViewDataColumn>
                     
-                    <asp:TemplateField HeaderText="操作">
-                        <ItemTemplate>
-                            <asp:LinkButton ID="lnkEdit" runat="server" CommandName="Edit" Text="编辑"></asp:LinkButton>
-                            <asp:LinkButton ID="lnkDelete" runat="server" CommandName="Delete" 
-                                Text="删除" OnClientClick="return confirm('确定删除此记录?');"></asp:LinkButton>
-                        </ItemTemplate>
-                        <EditItemTemplate>
-                            <asp:LinkButton ID="lnkUpdate" runat="server" CommandName="Update" Text="更新"></asp:LinkButton>
-                            <asp:LinkButton ID="lnkCancel" runat="server" CommandName="Cancel" Text="取消"></asp:LinkButton>
-                        </EditItemTemplate>
-                    </asp:TemplateField>
+                    <dx:GridViewCommandColumn Caption="操作" ShowEditButton="true" ShowDeleteButton="true">
+                    </dx:GridViewCommandColumn>
                 </Columns>
             </asp:GridView>
             
@@ -100,9 +88,6 @@
     </form>
 </body>
 </html>
-
-
-
 
 using System;
 using System.Data;
@@ -284,18 +269,21 @@ namespace YourNamespace
             BindGrid();
         }
 
-        protected void GridView1_RowUpdating(object sender, GridViewUpdateEventArgs e)
+        protected void GridView1_RowUpdating(object sender, ASPxDataUpdatingEventArgs e)
         {
-            int rowIndex = e.RowIndex;
-            GridViewRow row = GridView1.Rows[rowIndex];
+            // 获取正在编辑的行
+            ASPxGridView gridView = (ASPxGridView)sender;
             
             // 获取ID
-            string id = GridView1.DataKeys[rowIndex].Value.ToString();
+            string id = e.Keys["ID"].ToString();
             
             // 获取频率控件
-            ASPxSpinEdit txtFreqCount = (ASPxSpinEdit)row.FindControl("txtFreqCount");
-            ASPxSpinEdit txtFreqUnitCount = (ASPxSpinEdit)row.FindControl("txtFreqUnitCount");
-            ASPxComboBox cmbFreqUnit = (ASPxComboBox)row.FindControl("cmbFreqUnit");
+            ASPxSpinEdit txtFreqCount = (ASPxSpinEdit)gridView.FindEditRowCellTemplateControl(
+                gridView.Columns["FREQUENCY"] as GridViewDataColumn, "txtFreqCount");
+            ASPxSpinEdit txtFreqUnitCount = (ASPxSpinEdit)gridView.FindEditRowCellTemplateControl(
+                gridView.Columns["FREQUENCY"] as GridViewDataColumn, "txtFreqUnitCount");
+            ASPxComboBox cmbFreqUnit = (ASPxComboBox)gridView.FindEditRowCellTemplateControl(
+                gridView.Columns["FREQUENCY"] as GridViewDataColumn, "cmbFreqUnit");
             
             // 获取频率值
             int freqCount = Convert.ToInt32(txtFreqCount.Value);
@@ -308,8 +296,9 @@ namespace YourNamespace
             // 更新数据库
             UpdateRecord(id, frequency);
             
-            // 重置编辑状态
-            GridView1.EditIndex = -1;
+            // 取消编辑状态
+            e.Cancel = true;
+            gridView.CancelEdit();
             BindGrid();
         }
 
