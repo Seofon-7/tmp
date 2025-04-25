@@ -1,79 +1,63 @@
-如果你依照方案 B 依然拿不到 spinValue、spinCount、cmbUnit，那通常是因為在 Inline 模式下的「新增列」，模板控制項還沒有在 Grid 外層建立完全，直接呼叫 FindEditRowCellTemplateControl 會回傳 null。下面有兩個加強版的作法，你可以擇一試看看。
+我理解您在 ASP.NET 的 GridView 控件中使用 OnRowUpdating 事件时可以找到 ASPxSpinEdit 控件的值，但在 OnRowInserting 事件中却无法找到。这是因为在插入新行时与更新已有行的处理方式有所不同。
 
-1. 透過 EditingRowVisibleIndex + FindRowCellTemplateControl
+针对您的问题，在 OnRowInserting 事件中获取 ASPxSpinEdit 控件的值，您可以尝试以下解决方案：
 
-在 Inline 模式下，Grid 的「編輯列」其實就是 EditingRowVisibleIndex 這一列（新增模式下這個 index 也是正確的）。
-你可以這樣寫：
-
-protected void gridB_RowInserting(object sender, ASPxDataInsertingEventArgs e) {
-    FillFromControls(e.NewValues);
-}
-
-void FillFromControls(System.Collections.IDictionary vals) {
-    // 1. 取目前的「編輯列」索引
-    int editIndex = gridB.EditingRowVisibleIndex;
+```csharp
+protected void GridView_RowInserting(object sender, ASPxGridViewInsertingEventArgs e)
+{
+    // 获取插入行中的控件
+    ASPxSpinEdit spinEditValue = GridView.FindEditFormTemplateControl("spinEditID") as ASPxSpinEdit;
+    ASPxSpinEdit spinEditUnitCount = GridView.FindEditFormTemplateControl("spinEditUnitCountID") as ASPxSpinEdit;
+    ASPxComboBox comboBoxUnit = GridView.FindEditFormTemplateControl("comboBoxUnitID") as ASPxComboBox;
     
-    // 2. 找到那一格 (cell) 裡的控制項
-    var col = gridB.Columns["Dummy"] as GridViewDataColumn;
-    var spinValue    = gridB.FindRowCellTemplateControl(editIndex, col, "spinValue")    as ASPxSpinEdit;
-    var spinCount    = gridB.FindRowCellTemplateControl(editIndex, col, "spinCount")    as ASPxSpinEdit;
-    var comboUnit    = gridB.FindRowCellTemplateControl(editIndex, col, "cmbUnit")      as ASPxComboBox;
+    if (spinEditValue != null)
+    {
+        // 获取控件的值并赋给e.NewValues集合
+        e.NewValues["frequency"] = ConvertToFrequency(spinEditValue.Value, spinEditUnitCount.Value, comboBoxUnit.Value);
+    }
+}
+
+// 辅助方法，用于将各个控件的值转换为frequency值
+private string ConvertToFrequency(object value, object unitCount, object unit)
+{
+    // 实现您的转换逻辑
+    // 例如：return value.ToString() + unitCount.ToString() + unit.ToString();
+}
+```
+
+如果您使用的是内联编辑模式(inline edit mode)，那么需要使用不同的方法获取控件：
+
+```csharp
+protected void GridView_RowInserting(object sender, ASPxGridViewInsertingEventArgs e)
+{
+    GridViewRow row = GridView.FindChildControl("GridView1").NamingContainer as GridViewRow;
     
-    // 3. 塞值
-    if (spinValue != null) vals["unitValue"] = spinValue.Value;
-    if (spinCount != null) vals["unitCount"] = spinCount.Value;
-    if (comboUnit != null) vals["unitText"]  = comboUnit.Value;
+    // 注意这里的路径应该与您的控件层次结构匹配
+    ASPxSpinEdit spinEditValue = row.FindControl("spinEditID") as ASPxSpinEdit;
+    ASPxSpinEdit spinEditUnitCount = row.FindControl("spinEditUnitCountID") as ASPxSpinEdit;
+    ASPxComboBox comboBoxUnit = row.FindControl("comboBoxUnitID") as ASPxComboBox;
+    
+    if (spinEditValue != null)
+    {
+        e.NewValues["frequency"] = ConvertToFrequency(spinEditValue.Value, spinEditUnitCount.Value, comboBoxUnit.Value);
+    }
 }
+```
 
-	重點
-		•	gridB.EditingRowVisibleIndex：這個 index 在「新增列」跟「編輯列」都有效。
-	•	FindRowCellTemplateControl( rowIndex, column, controlID )：比單純的 FindEditRowCellTemplateControl 更穩定。
+另外，您也可以尝试直接从 e.NewValues 字典中获取值，因为 ASPxGridView 在触发 RowInserting 事件前会将控件的值收集到这个字典中：
 
-2. 把三個控制項拆到各自的 Column
-
-如果上面還是抓不到，建議第 2 種加強版：把三個控件分到 3 個各自綁欄位的 GridViewDataColumn，這樣 DevExpress 自動會幫你把它們在 Inline 新增時建起來，你就可以直接在事件裡用原生的：
-
-ASPxSpinEdit spinValue = gridB.FindEditRowCellTemplateControl(
-    gridB.Columns["Value1"] as GridViewDataColumn, "spinValue") as ASPxSpinEdit;
-… 
-
-對照方案 B，把欄位改成：
-
-<dx:GridViewDataColumn FieldName="Value1" Caption="拆分後值">
-  <EditItemTemplate>
-    <dx:ASPxSpinEdit ID="spinValue" runat="server"
-        Value='<%# getFrequencyValue(Eval("frequency")) %>' />
-  </EditItemTemplate>
-</dx:GridViewDataColumn>
-<dx:GridViewDataColumn FieldName="Value2" Caption="單位數">
-  <EditItemTemplate>
-    <dx:ASPxSpinEdit ID="spinCount" runat="server"
-        Value='<%# getFrequencyUnitCount(Eval("frequency")) %>' />
-  </EditItemTemplate>
-</dx:GridViewDataColumn>
-<dx:GridViewDataColumn FieldName="Value3" Caption="單位文字">
-  <EditItemTemplate>
-    <dx:ASPxComboBox ID="cmbUnit" runat="server"
-        Value='<%# getFrequencyUnit(Eval("frequency")) %>' />
-  </EditItemTemplate>
-</dx:GridViewDataColumn>
-
-然後在 RowInserting/Updating 就真的能穩拿到每個 control：
-
-protected void gridB_RowInserting(object sender, ASPxDataInsertingEventArgs e) {
-    var col1 = gridB.Columns["Value1"] as GridViewDataColumn;
-    var col2 = gridB.Columns["Value2"] as GridViewDataColumn;
-    var col3 = gridB.Columns["Value3"] as GridViewDataColumn;
-    var sv   = gridB.FindEditRowCellTemplateControl(col1, "spinValue") as ASPxSpinEdit;
-    var sc   = gridB.FindEditRowCellTemplateControl(col2, "spinCount") as ASPxSpinEdit;
-    var cb   = gridB.FindEditRowCellTemplateControl(col3, "cmbUnit") as ASPxComboBox;
-    if (sv != null) e.NewValues["unitValue"] = sv.Value;
-    if (sc != null) e.NewValues["unitCount"] = sc.Value;
-    if (cb != null) e.NewValues["unitText"]  = cb.Value;
+```csharp
+protected void GridView_RowInserting(object sender, ASPxGridViewInsertingEventArgs e)
+{
+    // 假设您的ASPxSpinEdit控件的DataField属性已设置好
+    object value = e.NewValues["spinEditDataField"];
+    object unitCount = e.NewValues["unitCountDataField"];
+    object unit = e.NewValues["unitDataField"];
+    
+    e.NewValues["frequency"] = ConvertToFrequency(value, unitCount, unit);
 }
+```
 
-哪個方案適合你？
-	•	方案 1：保留欄位合併為「Dummy」，用 EditingRowVisibleIndex 搭配 FindRowCellTemplateControl。
-	•	方案 2：拆欄位，各自控制，最穩也最容易 debug。
+如果以上方法都不起作用，您可能需要在页面加载时给这些控件添加事件处理器，并在事件中保存控件的值到一个静态变量或者ViewState中，然后在OnRowInserting事件中使用这些保存的值。
 
-試試看方案 1，如果抓不到再切到方案 2。任何問題再跟我說！
+希望这些建议对您有所帮助！如果您能提供更具体的代码示例，我可以给出更精确的解决方案。​​​​​​​​​​​​​​​​
