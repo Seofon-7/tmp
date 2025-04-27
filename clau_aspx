@@ -1,285 +1,89 @@
-// SpcToolRankManagement.aspx
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="SpcToolRankManagement.aspx.cs" Inherits="YourNamespace.SpcToolRankManagement" %>
+<dx:ASPxGridView ID="gridFrequency" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
+    OnRowInserting="gridFrequency_RowInserting" OnRowUpdating="gridFrequency_RowUpdating"
+    OnInit="gridFrequency_Init" OnCustomCallback="gridFrequency_CustomCallback"
+    ClientInstanceName="gridFrequency" Width="100%">
+    <SettingsEditing Mode="Inline" />
+    <SettingsBehavior ConfirmDelete="true" />
+    <Columns>
+        <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" ShowNewButtonInHeader="true" />
+        <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" Visible="false" />
+        
+        <!-- 頻率欄位 -->
+        <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="頻率設定">
+            <DataItemTemplate>
+                <%# FormatFrequencyDisplay(Eval("FREQUENCY")) %>
+            </DataItemTemplate>
+            <EditItemTemplate>
+                <table>
+                    <tr>
+                        <td>
+                            每
+                            <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" 
+                                Value='<%# GetFreqValue(Eval("FREQUENCY")) %>' 
+                                MinValue="1" Width="60px" ClientInstanceName="txtFreqCount">
+                                <ClientSideEvents Init="function(s, e) { txtFreqCountInstance = s; }" />
+                            </dx:ASPxSpinEdit>
+                            次：
+                        </td>
+                        <td>
+                            <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" 
+                                Value='<%# GetFreqUnitCountValue(Eval("FREQUENCY")) %>' 
+                                MinValue="1" Width="60px" ClientInstanceName="txtFreqUnitCount">
+                                <ClientSideEvents Init="function(s, e) { txtFreqUnitCountInstance = s; }" />
+                            </dx:ASPxSpinEdit>
+                        </td>
+                        <td>
+                            <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" 
+                                Value='<%# GetFreqUnitValue(Eval("FREQUENCY")) %>' 
+                                Width="60px" ClientInstanceName="cmbFreqUnit">
+                                <ClientSideEvents Init="function(s, e) { cmbFreqUnitInstance = s; }" />
+                                <Items>
+                                    <dx:ListEditItem Text="天" Value="D" />
+                                    <dx:ListEditItem Text="週" Value="W" />
+                                </Items>
+                            </dx:ASPxComboBox>
+                        </td>
+                    </tr>
+                </table>
+                <!-- 隱藏欄位存儲組合後的值 -->
+                <dx:ASPxHiddenField ID="hfCombinedFrequency" runat="server" ClientInstanceName="hfCombinedFrequency">
+                </dx:ASPxHiddenField>
+            </EditItemTemplate>
+        </dx:GridViewDataColumn>
+        
+        <!-- 其他欄位... -->
+    </Columns>
+    <Toolbars>
+        <dx:GridViewToolbar>
+            <Items>
+                <dx:GridViewToolbarItem Command="New" Text="新增" />
+            </Items>
+        </dx:GridViewToolbar>
+    </Toolbars>
+    <ClientSideEvents BeforePerformDataInsert="function(s, e) { return CombineFrequencyValues(); }"
+                       BeforePerformDataUpdate="function(s, e) { return CombineFrequencyValues(); }" />
+</dx:ASPxGridView>
 
-<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" 
-    Namespace="DevExpress.Web" TagPrefix="dx" %>
-
-<!DOCTYPE html>
-
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head runat="server">
-    <title>SPC Tool Rank Management</title>
-    <style type="text/css">
-        .customButton {
-            margin: 2px;
-        }
-    </style>
-    <script type="text/javascript">
-        function confirmDelete() {
-            return confirm("確定要刪除此筆資料?");
-        }
-
-        function OnToolbarItemClick(s, e) {
-            if (e.item.name === "AddNew") {
-                popupEditForm.Show();
-            }
-            else if (e.item.name === "SaveChanges") {
-                if (confirm("確定要儲存所有變更?")) {
-                    gridSpcToolRank.UpdateEdit();
-                    saveChangesCallback.PerformCallback();
-                }
-            }
-        }
-
-        function OnEndCallback(s, e) {
-            if (e.command === "CUSTOMADDNEW") {
-                gridSpcToolRank.AddNewRow();
-            }
-        }
-
-        function OnInitNewRow(s, e) {
-            // 如果是通過CustomAddNew按鈕添加的，可以通過這裡設置預設值
-            var selectedRow = gridSpcToolRank.GetFocusedRowIndex();
-            if (selectedRow >= 0) {
-                var chpGrp = gridSpcToolRank.GetRowValues(selectedRow, "CHP_GRP");
-                e.rowValues["CHP_GRP"] = chpGrp;
-            }
-        }
-
-        function filterByChpGrp() {
-            var filterValue = txtChpGrpFilter.GetText();
-            gridSpcToolRank.ApplyFilter("[CHP_GRP] LIKE '%" + filterValue + "%'");
-        }
-
-        function onLayerFilterChanged(s, e) {
-            var selectedLayer = s.GetValue();
-            if (selectedLayer === "ALL") {
-                gridSpcToolRank.ClearFilter();
-            } else {
-                gridSpcToolRank.ApplyFilter("[LAYER] = '" + selectedLayer + "'");
-            }
-        }
-    </script>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <dx:ASPxGridView ID="gridSpcToolRank" runat="server" KeyFieldName="ID" ClientInstanceName="gridSpcToolRank"
-            Width="100%" AutoGenerateColumns="False" OnRowInserting="gridSpcToolRank_RowInserting"
-            OnRowDeleting="gridSpcToolRank_RowDeleting" OnRowUpdating="gridSpcToolRank_RowUpdating"
-            OnInitNewRow="gridSpcToolRank_InitNewRow">
-            <ClientSideEvents EndCallback="OnEndCallback" InitNewRow="OnInitNewRow" />
-            <SettingsPager PageSize="20" />
-            <SettingsEditing Mode="Inline" NewItemRowPosition="Bottom" />
-            <SettingsCommandButton>
-                <EditButton Text="編輯" />
-                <UpdateButton Text="更新" />
-                <CancelButton Text="取消" />
-                <DeleteButton Text="刪除">
-                    <Image Url="~/Content/Images/delete.png"></Image>
-                </DeleteButton>
-            </SettingsCommandButton>
-            <Settings ShowFilterRow="true" ShowFilterRowMenu="true" />
-            <SettingsBehavior AllowFocusedRow="true" ConfirmDelete="true" />
-            <Toolbars>
-                <dx:GridViewToolbar>
-                    <ClientSideEvents ItemClick="OnToolbarItemClick" />
-                    <Items>
-                        <dx:GridViewToolbarItem Name="AddNew" Text="新增" BeginGroup="true">
-                            <Image Url="~/Content/Images/add.png" />
-                        </dx:GridViewToolbarItem>
-                        <dx:GridViewToolbarItem Name="SaveChanges" Text="儲存" BeginGroup="true">
-                            <Image Url="~/Content/Images/save.png" />
-                        </dx:GridViewToolbarItem>
-                        <dx:GridViewToolbarItem BeginGroup="true">
-                            <Template>
-                                <dx:ASPxComboBox ID="cmbLayerFilter" runat="server" Width="150px" Caption="Layer:" 
-                                    ClientInstanceName="cmbLayerFilter" ClearButton-DisplayMode="Always"
-                                    OnInit="cmbLayerFilter_Init">
-                                    <ClientSideEvents SelectedIndexChanged="onLayerFilterChanged" />
-                                </dx:ASPxComboBox>
-                            </Template>
-                        </dx:GridViewToolbarItem>
-                        <dx:GridViewToolbarItem BeginGroup="true">
-                            <Template>
-                                <dx:ASPxTextBox ID="txtChpGrpFilter" runat="server" Width="150px" NullText="搜尋 CHP_GRP..."
-                                    ClientInstanceName="txtChpGrpFilter">
-                                    <ClientSideEvents KeyPress="function(s, e) { if(e.htmlEvent.keyCode === 13) { filterByChpGrp(); ASPxClientUtils.PreventEventAndBubble(e.htmlEvent); } }" />
-                                </dx:ASPxTextBox>
-                                <dx:ASPxButton ID="btnSearch" runat="server" Text="搜尋" AutoPostBack="false">
-                                    <ClientSideEvents Click="function(s, e) { filterByChpGrp(); }" />
-                                </dx:ASPxButton>
-                            </Template>
-                        </dx:GridViewToolbarItem>
-                    </Items>
-                </dx:GridViewToolbar>
-            </Toolbars>
-            <Columns>
-                <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" Width="100px">
-                    <CustomButtons>
-                        <dx:GridViewCommandColumnCustomButton ID="customAddNew" Text="新增相同" />
-                    </CustomButtons>
-                </dx:GridViewCommandColumn>
-                <dx:GridViewDataTextColumn FieldName="CHP_GRP" Caption="CHP_GRP" Width="150px">
-                    <PropertiesTextEdit>
-                        <ValidationSettings RequiredField-IsRequired="true" Display="Dynamic" />
-                    </PropertiesTextEdit>
-                </dx:GridViewDataTextColumn>
-                <dx:GridViewDataTextColumn FieldName="LAYER" Caption="Layer" Width="100px">
-                    <PropertiesTextEdit>
-                        <ValidationSettings RequiredField-IsRequired="true" Display="Dynamic" />
-                    </PropertiesTextEdit>
-                </dx:GridViewDataTextColumn>
-                <dx:GridViewDataTextColumn FieldName="OPE_NO" Caption="Ope No" Width="100px">
-                    <PropertiesTextEdit>
-                        <ValidationSettings RequiredField-IsRequired="true" Display="Dynamic" />
-                    </PropertiesTextEdit>
-                </dx:GridViewDataTextColumn>
-                <dx:GridViewDataTextColumn FieldName="PR" Caption="PR" Width="100px">
-                    <PropertiesTextEdit>
-                        <ValidationSettings RequiredField-IsRequired="true" Display="Dynamic" />
-                    </PropertiesTextEdit>
-                </dx:GridViewDataTextColumn>
-                <dx:GridViewDataTextColumn FieldName="FREQUENCY" Caption="頻率" Width="150px">
-                    <EditItemTemplate>
-                        <table>
-                            <tr>
-                                <td>
-                                    <dx:ASPxSpinEdit ID="txtFreqTimes" runat="server" Width="50px" Number='<%# GetFrequencyTimes(Eval("FREQUENCY")) %>' MinValue="1" MaxValue="100">
-                                    </dx:ASPxSpinEdit>
-                                </td>
-                                <td>次：</td>
-                                <td>
-                                    <dx:ASPxComboBox ID="cmbFreqType" runat="server" Width="60px" Value='<%# GetFrequencyType(Eval("FREQUENCY")) %>'>
-                                        <Items>
-                                            <dx:ListEditItem Text="天" Value="天" Selected="true" />
-                                            <dx:ListEditItem Text="週" Value="週" />
-                                        </Items>
-                                    </dx:ASPxComboBox>
-                                </td>
-                                <td>
-                                    <dx:ASPxSpinEdit ID="txtFreqValue" runat="server" Width="50px" Number='<%# GetFrequencyValue(Eval("FREQUENCY")) %>' MinValue="1" MaxValue="100">
-                                    </dx:ASPxSpinEdit>
-                                </td>
-                            </tr>
-                        </table>
-                    </EditItemTemplate>
-                </dx:GridViewDataTextColumn>
-            </Columns>
-            <ClientSideEvents CustomButtonClick="function(s, e) {
-                            if(e.buttonID == 'customAddNew') {
-                                var rowKey = s.GetRowKey(e.visibleIndex);
-                                gridSpcToolRank.PerformCallback('CUSTOMADDNEW|' + rowKey);
-                            }
-                        }" />
-        </dx:ASPxGridView>
-
-        <dx:ASPxPopupControl ID="popupEditForm" runat="server" ClientInstanceName="popupEditForm" Width="500px"
-            HeaderText="新增資料" PopupHorizontalAlign="WindowCenter" PopupVerticalAlign="WindowCenter"
-            Modal="true" CloseAction="CloseButton" AllowDragging="true" EnableViewState="false">
-            <ContentCollection>
-                <dx:PopupControlContentControl runat="server">
-                    <dx:ASPxFormLayout ID="formLayout" runat="server" ColCount="2">
-                        <Items>
-                            <dx:LayoutItem Caption="CHP_GRP">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                        <dx:ASPxComboBox ID="cmbChpGrp" runat="server" Width="100%" 
-                                            ClientInstanceName="cmbChpGrp" EnableCallbackMode="true" 
-                                            OnInit="cmbChpGrp_Init" AllowCustomValue="true" 
-                                            NullText="選擇或輸入CHP_GRP...">
-                                        </dx:ASPxComboBox>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                            <dx:LayoutItem Caption="Layer">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                        <dx:ASPxTextBox ID="txtLayer" runat="server" Width="100%">
-                                            <ValidationSettings RequiredField-IsRequired="true" 
-                                                RequiredField-ErrorText="請輸入Layer" Display="Dynamic" />
-                                        </dx:ASPxTextBox>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                            <dx:LayoutItem Caption="OPE_NO">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                        <dx:ASPxTextBox ID="txtOpeNo" runat="server" Width="100%">
-                                            <ValidationSettings RequiredField-IsRequired="true" 
-                                                RequiredField-ErrorText="請輸入OPE_NO" Display="Dynamic" />
-                                        </dx:ASPxTextBox>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                            <dx:LayoutItem Caption="PR">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                        <dx:ASPxTextBox ID="txtPr" runat="server" Width="100%">
-                                            <ValidationSettings RequiredField-IsRequired="true" 
-                                                RequiredField-ErrorText="請輸入PR" Display="Dynamic" />
-                                        </dx:ASPxTextBox>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                            <dx:LayoutItem Caption="頻率" ColSpan="2">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                        <table>
-                                            <tr>
-                                                <td>
-                                                    <dx:ASPxSpinEdit ID="txtFreqTimes" runat="server" Width="50px" Number="1" MinValue="1" MaxValue="100">
-                                                    </dx:ASPxSpinEdit>
-                                                </td>
-                                                <td style="padding: 0 5px;">次：</td>
-                                                <td>
-                                                    <dx:ASPxComboBox ID="cmbFreqType" runat="server" Width="60px">
-                                                        <Items>
-                                                            <dx:ListEditItem Text="天" Value="天" Selected="true" />
-                                                            <dx:ListEditItem Text="週" Value="週" />
-                                                        </Items>
-                                                    </dx:ASPxComboBox>
-                                                </td>
-                                                <td style="padding: 0 5px;"></td>
-                                                <td>
-                                                    <dx:ASPxSpinEdit ID="txtFreqValue" runat="server" Width="50px" Number="1" MinValue="1" MaxValue="100">
-                                                    </dx:ASPxSpinEdit>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                            <dx:LayoutItem ShowCaption="False" ColSpan="2">
-                                <LayoutItemNestedControlCollection>
-                                    <dx:LayoutItemNestedControlContainer>
-                                        <div style="text-align: right; padding: 10px 0;">
-                                            <dx:ASPxButton ID="btnSubmit" runat="server" Text="確定" AutoPostBack="false" 
-                                                OnClick="btnSubmit_Click" UseSubmitBehavior="false">
-                                                <ClientSideEvents Click="function(s, e) {
-                                                    if(ASPxClientEdit.ValidateGroup('FormValidation')) {
-                                                        e.processOnServer = true;
-                                                        popupEditForm.Hide();
-                                                    }
-                                                }" />
-                                            </dx:ASPxButton>
-                                            <dx:ASPxButton ID="btnCancel" runat="server" Text="取消" AutoPostBack="false">
-                                                <ClientSideEvents Click="function(s, e) { popupEditForm.Hide(); }" />
-                                            </dx:ASPxButton>
-                                        </div>
-                                    </dx:LayoutItemNestedControlContainer>
-                                </LayoutItemNestedControlCollection>
-                            </dx:LayoutItem>
-                        </Items>
-                        <SettingsItemCaptions Location="Top" />
-                    </dx:ASPxFormLayout>
-                </dx:PopupControlContentControl>
-            </ContentCollection>
-        </dx:ASPxPopupControl>
-
-        <dx:ASPxCallback ID="saveChangesCallback" runat="server" ClientInstanceName="saveChangesCallback" 
-            OnCallback="saveChangesCallback_Callback">
-            <ClientSideEvents CallbackComplete="function(s, e) { if(e.result == 'Success') alert('資料儲存成功!'); }" />
-        </dx:ASPxCallback>
-    </form>
-</body>
-</html>
+<!-- JavaScript 函數 -->
+<script type="text/javascript">
+    var txtFreqCountInstance, txtFreqUnitCountInstance, cmbFreqUnitInstance;
+    
+    function CombineFrequencyValues() {
+        if (!txtFreqCountInstance || !txtFreqUnitCountInstance || !cmbFreqUnitInstance) 
+            return true;
+            
+        var freqCount = txtFreqCountInstance.GetValue() || 1;
+        var unitCount = txtFreqUnitCountInstance.GetValue() || 1;
+        var unit = cmbFreqUnitInstance.GetValue() || 'D';
+        
+        var combinedValue = freqCount + '/' + unitCount + unit;
+        
+        // Store the value in a hidden field or callback
+        ASPxClientGridView.Cast(gridFrequency).GetEditingRowValues('FREQUENCY', function(values) {
+            // Using a custom callback to send this value to server
+            gridFrequency.PerformCallback('SETFREQUENCY|' + combinedValue);
+        });
+        
+        return true;
+    }
+</script>
