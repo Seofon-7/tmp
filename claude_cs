@@ -1,656 +1,136 @@
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Web.UI.WebControls;
-using DevExpress.Web;
-using Oracle.ManagedDataAccess.Client;
-using Oracle.ManagedDataAccess.Types;
-using System.Configuration;
-using System.Text.RegularExpressions;
+// 用於儲存臨時組合的頻率值
+private string _tempCombinedFrequency;
 
-namespace YourNamespace
+protected void gridFrequency_Init(object sender, EventArgs e)
 {
-    public partial class SpcToolRankManagement : System.Web.UI.Page
+    // 初始化暫存值
+    _tempCombinedFrequency = "1/1D";
+}
+
+protected void gridFrequency_CustomCallback(object sender, ASPxGridViewCustomCallbackEventArgs e)
+{
+    // 處理自定義回調
+    string[] parameters = e.Parameters.Split('|');
+    if (parameters.Length >= 2 && parameters[0] == "SETFREQUENCY")
     {
-        // 保存所有變更的臨時存儲
-        private DataTable ChangedData
-        {
-            get
-            {
-                if (Session["ChangedData"] == null)
-                {
-                    DataTable dt = new DataTable();
-                    dt.Columns.Add("ID", typeof(int));
-                    dt.Columns.Add("CHP_GRP", typeof(string));
-                    dt.Columns.Add("LAYER", typeof(string));
-                    dt.Columns.Add("OPE_NO", typeof(string));
-                    dt.Columns.Add("PR", typeof(string));
-                    dt.Columns.Add("FREQUENCY", typeof(string));
-                    dt.Columns.Add("STATUS", typeof(string)); // New, Modified, Deleted
-                    dt.PrimaryKey = new DataColumn[] { dt.Columns["ID"] };
-                    Session["ChangedData"] = dt;
-                }
-                return Session["ChangedData"] as DataTable;
-            }
-        }
+        _tempCombinedFrequency = parameters[1];
+    }
+}
 
-        // 獲取最新數據的臨時存儲
-        private DataTable CurrentData
+protected void gridFrequency_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+{
+    try
+    {
+        // 使用暫存的組合頻率值
+        string frequency = _tempCombinedFrequency;
+        
+        // 如果暫存值是空的，嘗試從插入值中構建頻率
+        if (string.IsNullOrEmpty(frequency) || frequency == "1/1D")
         {
-            get
-            {
-                if (Session["CurrentData"] == null)
-                {
-                    LoadDataFromDatabase();
-                }
-                return Session["CurrentData"] as DataTable;
-            }
-            set { Session["CurrentData"] = value; }
-        }
-
-        protected void Page_Load(object sender, EventArgs e)
-        {
-            if (!IsPostBack)
-            {
-                LoadDataFromDatabase();
-                BindGrid();
-            }
-
-            // 註冊自定義按鈕事件處理
-            gridSpcToolRank.CustomCallback += gridSpcToolRank_CustomCallback;
-        }
-
-        private void LoadDataFromDatabase()
-        {
+            // 嘗試取得每個控件的值 (通常這裡是取不到的，所以我們使用前面暫存的值)
             try
             {
-                string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
-                using (OracleConnection conn = new OracleConnection(connectionString))
-                {
-                    conn.Open();
-                    string sql = "SELECT ID, CHP_GRP, LAYER, OPE_NO, PR, FREQUENCY FROM SPC_TOOL_RANK ORDER BY CHP_GRP, LAYER, OPE_NO";
-                    using (OracleCommand cmd = new OracleCommand(sql, conn))
-                    {
-                        OracleDataAdapter adapter = new OracleDataAdapter(cmd);
-                        DataTable dt = new DataTable();
-                        adapter.Fill(dt);
-                        CurrentData = dt;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // 處理錯誤，可以顯示到頁面
-                ScriptManager.RegisterStartupScript(this, GetType(), "error", $"alert('載入數據錯誤: {ex.Message}');", true);
-            }
-        }
-
-        private void BindGrid()
-        {
-            gridSpcToolRank.DataSource = CurrentData;
-            gridSpcToolRank.DataBind();
-        }
-
-        protected void gridSpcToolRank_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-        {
-            try
-            {
-                // 建立新行數據
-                DataRow newRow = CurrentData.NewRow();
+                ASPxGridView grid = sender as ASPxGridView;
+                GridViewEditFormTemplateContainer container = grid.FindEditFormTemplateContainer();
                 
-                // 生成一個暫時的唯一ID (用於UI操作，最終保存時會用資料庫自動生成的)
-                int tempID = -1;
-                if (CurrentData.Rows.Count > 0)
-                {
-                    tempID = CurrentData.AsEnumerable().Min(r => Convert.ToInt32(r["ID"])) - 1;
-                }
-                
-                newRow["ID"] = tempID;
-                newRow["CHP_GRP"] = e.NewValues["CHP_GRP"];
-                newRow["LAYER"] = e.NewValues["LAYER"];
-                newRow["OPE_NO"] = e.NewValues["OPE_NO"];
-                newRow["PR"] = e.NewValues["PR"];
-
-                // 處理頻率
-                string frequency = FormatFrequency(e);
-                newRow["FREQUENCY"] = frequency;
-
-                // 添加到當前數據
-                CurrentData.Rows.Add(newRow);
-
-                // 添加到變更跟踪
-                DataRow changeRow = ChangedData.NewRow();
-                changeRow["ID"] = tempID;
-                changeRow["CHP_GRP"] = newRow["CHP_GRP"];
-                changeRow["LAYER"] = newRow["LAYER"];
-                changeRow["OPE_NO"] = newRow["OPE_NO"];
-                changeRow["PR"] = newRow["PR"];
-                changeRow["FREQUENCY"] = newRow["FREQUENCY"];
-                changeRow["STATUS"] = "New";
-                ChangedData.Rows.Add(changeRow);
-
-                // 取消ASPxGridView的默認插入行為
-                e.Cancel = true;
-                gridSpcToolRank.CancelEdit();
-                BindGrid();
-            }
-            catch (Exception ex)
-            {
-                ScriptManager.RegisterStartupScript(this, GetType(), "error", $"alert('新增數據錯誤: {ex.Message}');", true);
-                e.Cancel = true;
-            }
-        }
-
-        protected void gridSpcToolRank_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
-        {
-            try
-            {
-                // 獲取當前更新的行
-                int id = Convert.ToInt32(e.Keys[0]);
-                DataRow[] rows = CurrentData.Select($"ID = {id}");
-                
-                if (rows.Length > 0)
-                {
-                    DataRow row = rows[0];
-                    row["CHP_GRP"] = e.NewValues["CHP_GRP"];
-                    row["LAYER"] = e.NewValues["LAYER"];
-                    row["OPE_NO"] = e.NewValues["OPE_NO"];
-                    row["PR"] = e.NewValues["PR"];
-
-                    // 處理頻率
-                    string frequency = FormatFrequency(e);
-                    row["FREQUENCY"] = frequency;
-
-                    // 添加到變更跟踪
-                    if (ChangedData.Select($"ID = {id}").Length == 0)
-                    {
-                        DataRow changeRow = ChangedData.NewRow();
-                        changeRow["ID"] = id;
-                        changeRow["CHP_GRP"] = row["CHP_GRP"];
-                        changeRow["LAYER"] = row["LAYER"];
-                        changeRow["OPE_NO"] = row["OPE_NO"];
-                        changeRow["PR"] = row["PR"];
-                        changeRow["FREQUENCY"] = row["FREQUENCY"];
-                        changeRow["STATUS"] = "Modified";
-                        ChangedData.Rows.Add(changeRow);
-                    }
-                    else
-                    {
-                        DataRow existingChangeRow = ChangedData.Select($"ID = {id}")[0];
-                        if (existingChangeRow["STATUS"].ToString() != "New") // 已經是新資料則不改變狀態
-                        {
-                            existingChangeRow["CHP_GRP"] = row["CHP_GRP"];
-                            existingChangeRow["LAYER"] = row["LAYER"];
-                            existingChangeRow["OPE_NO"] = row["OPE_NO"];
-                            existingChangeRow["PR"] = row["PR"];
-                            existingChangeRow["FREQUENCY"] = row["FREQUENCY"];
-                            existingChangeRow["STATUS"] = "Modified";
-                        }
-                    }
-                }
-
-                // 取消ASPxGridView的默認更新行為
-                e.Cancel = true;
-                gridSpcToolRank.CancelEdit();
-                BindGrid();
-            }
-            catch (Exception ex)
-            {
-                ScriptManager.RegisterStartupScript(this, GetType(), "error", $"alert('更新數據錯誤: {ex.Message}');", true);
-                e.Cancel = true;
-            }
-        }
-
-        protected void gridSpcToolRank_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
-        {
-            try
-            {
-                int id = Convert.ToInt32(e.Keys[0]);
-                DataRow[] rows = CurrentData.Select($"ID = {id}");
-                
-                if (rows.Length > 0)
-                {
-                    DataRow row = rows[0];
-                    
-                    // 添加到變更跟踪
-                    if (id >= 0) // 只有資料庫中已存在的資料才需標記為刪除
-                    {
-                        if (ChangedData.Select($"ID = {id}").Length == 0)
-                        {
-                            DataRow changeRow = ChangedData.NewRow();
-                            changeRow["ID"] = id;
-                            changeRow["CHP_GRP"] = row["CHP_GRP"];
-                            changeRow["LAYER"] = row["LAYER"];
-                            changeRow["OPE_NO"] = row["OPE_NO"];
-                            changeRow["PR"] = row["PR"];
-                            changeRow["FREQUENCY"] = row["FREQUENCY"];
-                            changeRow["STATUS"] = "Deleted";
-                            ChangedData.Rows.Add(changeRow);
-                        }
-                        else
-                        {
-                            // 如果是新加的行被刪除，直接從ChangedData中移除
-                            DataRow[] changeRows = ChangedData.Select($"ID = {id}");
-                            if (changeRows.Length > 0 && changeRows[0]["STATUS"].ToString() == "New")
-                            {
-                                changeRows[0].Delete();
-                                ChangedData.AcceptChanges();
-                            }
-                            else
-                            {
-                                changeRows[0]["STATUS"] = "Deleted";
-                            }
-                        }
-                    }
-                    
-                    // 從當前數據中移除
-                    row.Delete();
-                    CurrentData.AcceptChanges();
-                }
-
-                // 取消ASPxGridView的默認刪除行為
-                e.Cancel = true;
-                BindGrid();
-            }
-            catch (Exception ex)
-            {
-                ScriptManager.RegisterStartupScript(this, GetType(), "error", $"alert('刪除數據錯誤: {ex.Message}');", true);
-                e.Cancel = true;
-            }
-        }
-
-        protected void gridSpcToolRank_CustomCallback(object sender, ASPxGridViewCustomCallbackEventArgs e)
-        {
-            string[] parameters = e.Parameters.Split('|');
-            if (parameters[0] == "CUSTOMADDNEW")
-            {
-                int rowKey = Convert.ToInt32(parameters[1]);
-                DataRow[] rows = CurrentData.Select($"ID = {rowKey}");
-                
-                if (rows.Length > 0)
-                {
-                    // 可以在這裡設置Session變量，存儲要複製的行數據，以便InitNewRow使用
-                    Session["CopyFromRow"] = rows[0];
-                }
-                
-                gridSpcToolRank.JSProperties["cpCommand"] = "CUSTOMADDNEW";
-            }
-        }
-
-        protected void gridSpcToolRank_InitNewRow(object sender, DevExpress.Web.Data.ASPxDataInitNewRowEventArgs e)
-        {
-            if (Session["CopyFromRow"] != null)
-            {
-                DataRow copyFromRow = Session["CopyFromRow"] as DataRow;
-                e.NewValues["CHP_GRP"] = copyFromRow["CHP_GRP"];
-                
-                // 清除，防止下次新增時誤用
-                Session["CopyFromRow"] = null;
-            }
-        }
-
-        protected void saveChangesCallback_Callback(object source, CallbackEventArgs e)
-        {
-            try
-            {
-                // 保存所有變更到資料庫
-                SaveChangesToDatabase();
-                e.Result = "Success";
-            }
-            catch (Exception ex)
-            {
-                e.Result = $"Error: {ex.Message}";
-            }
-        }
-
-        private void SaveChangesToDatabase()
-        {
-            if (ChangedData.Rows.Count == 0)
-            {
-                return;
-            }
-
-            string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
-            using (OracleConnection conn = new OracleConnection(connectionString))
-            {
-                conn.Open();
-                using (OracleTransaction transaction = conn.BeginTransaction())
-                {
-                    try
-                    {
-                        // 處理每個變更
-                        foreach (DataRow row in ChangedData.Rows)
-                        {
-                            string status = row["STATUS"].ToString();
-                            int id = Convert.ToInt32(row["ID"]);
-                            
-                            if (status == "New")
-                            {
-                                // 新增資料
-                                string insertSql = @"INSERT INTO SPC_TOOL_RANK (CHP_GRP, LAYER, OPE_NO, PR, FREQUENCY) 
-                                                    VALUES (:CHP_GRP, :LAYER, :OPE_NO, :PR, :FREQUENCY) 
-                                                    RETURNING ID INTO :ID";
-                                
-                                using (OracleCommand cmd = new OracleCommand(insertSql, conn))
-                                {
-                                    cmd.Transaction = transaction;
-                                    cmd.Parameters.Add("CHP_GRP", OracleDbType.Varchar2).Value = row["CHP_GRP"];
-                                    cmd.Parameters.Add("LAYER", OracleDbType.Varchar2).Value = row["LAYER"];
-                                    cmd.Parameters.Add("OPE_NO", OracleDbType.Varchar2).Value = row["OPE_NO"];
-                                    cmd.Parameters.Add("PR", OracleDbType.Varchar2).Value = row["PR"];
-                                    cmd.Parameters.Add("FREQUENCY", OracleDbType.Varchar2).Value = row["FREQUENCY"];
-                                    
-                                    OracleParameter idParam = new OracleParameter("ID", OracleDbType.Int32);
-                                    idParam.Direction = ParameterDirection.Output;
-                                    cmd.Parameters.Add(idParam);
-                                    
-                                    cmd.ExecuteNonQuery();
-                                    
-                                    // 更新臨時表格中的ID
-                                    int newID = Convert.ToInt32(((OracleDecimal)idParam.Value).Value);
-                                    
-                                    // 找到當前數據中對應的行並更新ID
-                                    DataRow[] currentRows = CurrentData.Select($"ID = {id}");
-                                    if (currentRows.Length > 0)
-                                    {
-                                        currentRows[0]["ID"] = newID;
-                                    }
-                                    
-                                    // 從變更跟踪中移除該行，因為已經保存
-                                    row.Delete();
-                                }
-                            }
-                            else if (status == "Modified")
-                            {
-                                // 更新資料
-                                string updateSql = @"UPDATE SPC_TOOL_RANK 
-                                                    SET CHP_GRP = :CHP_GRP,
-                                                        LAYER = :LAYER,
-                                                        OPE_NO = :OPE_NO,
-                                                        PR = :PR,
-                                                        FREQUENCY = :FREQUENCY
-                                                    WHERE ID = :ID";
-                                
-                                using (OracleCommand cmd = new OracleCommand(updateSql, conn))
-                                {
-                                    cmd.Transaction = transaction;
-                                    cmd.Parameters.Add("CHP_GRP", OracleDbType.Varchar2).Value = row["CHP_GRP"];
-                                    cmd.Parameters.Add("LAYER", OracleDbType.Varchar2).Value = row["LAYER"];
-                                    cmd.Parameters.Add("OPE_NO", OracleDbType.Varchar2).Value = row["OPE_NO"];
-                                    cmd.Parameters.Add("PR", OracleDbType.Varchar2).Value = row["PR"];
-                                    cmd.Parameters.Add("FREQUENCY", OracleDbType.Varchar2).Value = row["FREQUENCY"];
-                                    cmd.Parameters.Add("ID", OracleDbType.Int32).Value = id;
-                                    
-                                    cmd.ExecuteNonQuery();
-                                    
-                                    // 從變更跟踪中移除該行，因為已經保存
-                                    row.Delete();
-                                }
-                            }
-                            else if (status == "Deleted")
-                            {
-                                // 刪除資料
-                                string deleteSql = "DELETE FROM SPC_TOOL_RANK WHERE ID = :ID";
-                                
-                                using (OracleCommand cmd = new OracleCommand(deleteSql, conn))
-                                {
-                                    cmd.Transaction = transaction;
-                                    cmd.Parameters.Add("ID", OracleDbType.Int32).Value = id;
-                                    
-                                    cmd.ExecuteNonQuery();
-                                    
-                                    // 從變更跟踪中移除該行，因為已經保存
-                                    row.Delete();
-                                }
-                            }
-                        }
-                        
-                        // 提交事務
-                        transaction.Commit();
-                        
-                        // 清理變更跟踪
-                        ChangedData.AcceptChanges();
-                        
-                        // 重新從資料庫加載數據以確保一致性
-                        LoadDataFromDatabase();
-                        BindGrid();
-                    }
-                    catch (Exception)
-                    {
-                        transaction.Rollback();
-                        throw;
-                    }
-                }
-            }
-        }
-
-        private string FormatFrequency(dynamic e)
-        {
-            // 從表單或GridView中提取頻率相關值
-            ASPxSpinEdit txtFreqTimes = null;
-            ASPxComboBox cmbFreqType = null;
-            ASPxSpinEdit txtFreqValue = null;
-
-            // 嘗試從編輯模板中獲取控件
-            if (e is DevExpress.Web.Data.ASPxDataUpdatingEventArgs)
-            {
-                GridViewEditItemTemplateContainer container = gridSpcToolRank.FindEditRowCellTemplateControl(
-                    gridSpcToolRank.Columns["FREQUENCY"] as GridViewDataColumn, "txtFreqTimes") as GridViewEditItemTemplateContainer;
-
                 if (container != null)
                 {
-                    txtFreqTimes = container.FindControl("txtFreqTimes") as ASPxSpinEdit;
-                    cmbFreqType = container.FindControl("cmbFreqType") as ASPxComboBox;
-                    txtFreqValue = container.FindControl("txtFreqValue") as ASPxSpinEdit;
-                }
-            }
-
-            // 如果無法從編輯模板獲取，嘗試從提交的值獲取
-            if (txtFreqTimes == null || cmbFreqType == null || txtFreqValue == null)
-            {
-                int times = 1;
-                string type = "天";
-                int value = 1;
-
-                if (e.NewValues.Contains("txtFreqTimes") && e.NewValues["txtFreqTimes"] != null)
-                    times = Convert.ToInt32(e.NewValues["txtFreqTimes"]);
-
-                if (e.NewValues.Contains("cmbFreqType") && e.NewValues["cmbFreqType"] != null)
-                    type = e.NewValues["cmbFreqType"].ToString();
-
-                if (e.NewValues.Contains("txtFreqValue") && e.NewValues["txtFreqValue"] != null)
-                    value = Convert.ToInt32(e.NewValues["txtFreqValue"]);
-
-                return $"{times}次:{value}{type}";
-            }
-            else
-            {
-                int times = Convert.ToInt32(txtFreqTimes.Value);
-                string type = cmbFreqType.Value.ToString();
-                int value = Convert.ToInt32(txtFreqValue.Value);
-
-                return $"{times}次:{value}{type}";
-            }
-        }
-
-        protected int GetFrequencyTimes(object frequencyObj)
-        {
-            string frequency = Convert.ToString(frequencyObj);
-            if (string.IsNullOrEmpty(frequency))
-                return 1;
-
-            var match = Regex.Match(frequency, @"(\d+)次");
-            if (match.Success && match.Groups.Count > 1)
-            {
-                return Convert.ToInt32(match.Groups[1].Value);
-            }
-            return 1;
-        }
-
-        protected string GetFrequencyType(object frequencyObj)
-        {
-            string frequency = Convert.ToString(frequencyObj);
-            if (string.IsNullOrEmpty(frequency))
-                return "天";
-
-            if (frequency.Contains("週"))
-                return "週";
-            return "天";
-        }
-
-        protected int GetFrequencyValue(object frequencyObj)
-        {
-            string frequency = Convert.ToString(frequencyObj);
-            if (string.IsNullOrEmpty(frequency))
-                return 1;
-
-            var match = Regex.Match(frequency, @":(\d+)(天|週)");
-            if (match.Success && match.Groups.Count > 1)
-            {
-                return Convert.ToInt32(match.Groups[1].Value);
-            }
-            return 1;
-        }
-
-        protected void cmbChpGrp_Init(object sender, EventArgs e)
-        {
-            ASPxComboBox cmbChpGrp = sender as ASPxComboBox;
-            if (cmbChpGrp != null)
-            {
-                try
-                {
-                    string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
-                    using (OracleConnection conn = new OracleConnection(connectionString))
+                    ASPxSpinEdit txtFreqCount = container.FindControl("txtFreqCount") as ASPxSpinEdit;
+                    ASPxSpinEdit txtFreqUnitCount = container.FindControl("txtFreqUnitCount") as ASPxSpinEdit;
+                    ASPxComboBox cmbFreqUnit = container.FindControl("cmbFreqUnit") as ASPxComboBox;
+                    
+                    if (txtFreqCount != null && txtFreqUnitCount != null && cmbFreqUnit != null)
                     {
-                        conn.Open();
-                        string sql = "SELECT DISTINCT CHP_GRP FROM FLOW_MAPPING ORDER BY CHP_GRP";
-                        using (OracleCommand cmd = new OracleCommand(sql, conn))
-                        {
-                            using (OracleDataReader reader = cmd.ExecuteReader())
-                            {
-                                while (reader.Read())
-                                {
-                                    string chpGrp = reader["CHP_GRP"].ToString();
-                                    cmbChpGrp.Items.Add(chpGrp, chpGrp);
-                                }
-                            }
-                        }
+                        int freqCount = Convert.ToInt32(txtFreqCount.Value);
+                        int unitCount = Convert.ToInt32(txtFreqUnitCount.Value);
+                        string unit = cmbFreqUnit.Value.ToString();
+                        
+                        frequency = string.Format("{0}/{1}{2}", freqCount, unitCount, unit);
                     }
                 }
-                catch (Exception ex)
-                {
-                    // 處理錯誤
-                    ScriptManager.RegisterStartupScript(this, GetType(), "error", $"alert('載入CHP_GRP數據錯誤: {ex.Message}');", true);
-                }
-            }
-        }
-
-        protected void cmbLayerFilter_Init(object sender, EventArgs e)
-        {
-            ASPxComboBox cmbLayerFilter = sender as ASPxComboBox;
-            if (cmbLayerFilter != null)
-            {
-                try
-                {
-                    // 添加"全部"選項
-                    cmbLayerFilter.Items.Add("ALL", "ALL");
-                    
-                    // 從資料庫中獲取所有不重複的Layer值
-                    string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
-                    using (OracleConnection conn = new OracleConnection(connectionString))
-                    {
-                        conn.Open();
-                        string sql = "SELECT DISTINCT LAYER FROM SPC_TOOL_RANK ORDER BY LAYER";
-                        using (OracleCommand cmd = new OracleCommand(sql, conn))
-                        {
-                            using (OracleDataReader reader = cmd.ExecuteReader())
-                            {
-                                while (reader.Read())
-                                {
-                                    string layer = reader["LAYER"].ToString();
-                                    cmbLayerFilter.Items.Add(layer, layer);
-                                }
-                            }
-                        }
-                    }
-                    
-                    // 預設選擇"全部"
-                    cmbLayerFilter.Value = "ALL";
-                }
-                catch (Exception ex)
-                {
-                    // 處理錯誤
-                    ScriptManager.RegisterStartupScript(this, GetType(), "error", $"alert('載入Layer數據錯誤: {ex.Message}');", true);
-                }
-            }
-        }
-
-        protected void btnSubmit_Click(object sender, EventArgs e)
-        {
-            try
-            {
-                ASPxComboBox cmbChpGrp = popupEditForm.FindControl("cmbChpGrp") as ASPxComboBox;
-                ASPxTextBox txtLayer = popupEditForm.FindControl("txtLayer") as ASPxTextBox;
-                ASPxTextBox txtOpeNo = popupEditForm.FindControl("txtOpeNo") as ASPxTextBox;
-                ASPxTextBox txtPr = popupEditForm.FindControl("txtPr") as ASPxTextBox;
-                ASPxSpinEdit txtFreqTimes = popupEditForm.FindControl("txtFreqTimes") as ASPxSpinEdit;
-                ASPxComboBox cmbFreqType = popupEditForm.FindControl("cmbFreqType") as ASPxComboBox;
-                ASPxSpinEdit txtFreqValue = popupEditForm.FindControl("txtFreqValue") as ASPxSpinEdit;
-
-                // 創建新行
-                DataRow newRow = CurrentData.NewRow();
-                
-                // 生成一個暫時的唯一ID
-                int tempID = -1;
-                if (CurrentData.Rows.Count > 0)
-                {
-                    tempID = CurrentData.AsEnumerable().Min(r => Convert.ToInt32(r["ID"])) - 1;
-                }
-                
-                newRow["ID"] = tempID;
-                newRow["CHP_GRP"] = cmbChpGrp.Value;
-                newRow["LAYER"] = txtLayer.Text;
-                newRow["OPE_NO"] = txtOpeNo.Text;
-                newRow["PR"] = txtPr.Text;
-
-                // 處理頻率
-                int times = Convert.ToInt32(txtFreqTimes.Value);
-                string type = cmbFreqType.Value.ToString();
-                int value = Convert.ToInt32(txtFreqValue.Value);
-                string frequency = $"{times}次:{value}{type}";
-                newRow["FREQUENCY"] = frequency;
-
-                // 添加到當前數據
-                CurrentData.Rows.Add(newRow);
-
-                // 添加到變更跟踪
-                DataRow changeRow = ChangedData.NewRow();
-                changeRow["ID"] = tempID;
-                changeRow["CHP_GRP"] = newRow["CHP_GRP"];
-                changeRow["LAYER"] = newRow["LAYER"];
-                changeRow["OPE_NO"] = newRow["OPE_NO"];
-                changeRow["PR"] = newRow["PR"];
-                changeRow["FREQUENCY"] = newRow["FREQUENCY"];
-                changeRow["STATUS"] = "New";
-                ChangedData.Rows.Add(changeRow);
-
-                // 重新綁定Grid
-                BindGrid();
-                
-                // 清空表單控件
-                cmbChpGrp.Value = null;
-                txtLayer.Text = string.Empty;
-                txtOpeNo.Text = string.Empty;
-                txtPr.Text = string.Empty;
-                txtFreqTimes.Value = 1;
-                cmbFreqType.Value = "天";
-                txtFreqValue.Value = 1;
             }
             catch (Exception ex)
             {
-                ScriptManager.RegisterStartupScript(this, GetType(), "error", $"alert('添加資料錯誤: {ex.Message}');", true);
+                // 記錄錯誤但繼續使用前面暫存的值
+                System.Diagnostics.Debug.WriteLine($"無法從編輯模板獲取控件值: {ex.Message}");
             }
         }
+        
+        // 將組合後的頻率值加入到e.NewValues中
+        e.NewValues["FREQUENCY"] = frequency;
+        
+        // 執行插入操作
+        using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+        {
+            conn.Open();
+            using (SqlCommand cmd = new SqlCommand())
+            {
+                cmd.Connection = conn;
+                cmd.CommandType = CommandType.Text;
+                cmd.CommandText = "INSERT INTO YourTable (FREQUENCY) VALUES (@FREQUENCY)";
+                
+                cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
+                
+                cmd.ExecuteNonQuery();
+            }
+        }
+        
+        // 重置暫存值
+        _tempCombinedFrequency = "1/1D";
+        
+        // 取消 GridView 默認的插入操作，因為我們已經手動處理了
+        e.Cancel = true;
+        
+        // 重新綁定網格以顯示新數據
+        BindGrid();
+    }
+    catch (Exception ex)
+    {
+        ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
+            $"alert('插入數據時發生錯誤: {ex.Message.Replace("'", "\\'")}');", true);
+        e.Cancel = true;
+    }
+}
+
+protected void gridFrequency_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+{
+    try
+    {
+        // 使用與插入類似的邏輯，利用暫存的頻率值
+        string frequency = _tempCombinedFrequency;
+        
+        // 也可以嘗試從 UpdateValues 中獲取值，與上面插入方法類似
+        
+        // 執行更新操作
+        using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+        {
+            conn.Open();
+            using (SqlCommand cmd = new SqlCommand())
+            {
+                cmd.Connection = conn;
+                cmd.CommandType = CommandType.Text;
+                cmd.CommandText = "UPDATE YourTable SET FREQUENCY = @FREQUENCY WHERE ID = @ID";
+                
+                cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
+                cmd.Parameters.AddWithValue("@ID", e.Keys["ID"]);
+                
+                cmd.ExecuteNonQuery();
+            }
+        }
+        
+        // 重置暫存值
+        _tempCombinedFrequency = "1/1D";
+        
+        // 取消 GridView 默認的更新操作
+        e.Cancel = true;
+        
+        // 重新綁定網格
+        BindGrid();
+    }
+    catch (Exception ex)
+    {
+        ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
+            $"alert('更新數據時發生錯誤: {ex.Message.Replace("'", "\\'")}');", true);
+        e.Cancel = true;
     }
 }
