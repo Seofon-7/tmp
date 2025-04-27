@@ -1,208 +1,31 @@
-<%@ Page Language="C#" AutoEventWireup="true" CodeFile="ToolRankManager.aspx.cs" Inherits="ToolRankManager" %>
-<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" 
+    AutoGenerateColumns="False" 
+    KeyFieldName="ID"
+    OnRowInserting="ASPxGridView1_RowInserting"
+    OnRowUpdating="ASPxGridView1_RowUpdating"
+    OnStartRowEditing="ASPxGridView1_StartRowEditing"
+    OnInitNewRow="ASPxGridView1_InitNewRow"
+    OnCustomColumnDisplayText="ASPxGridView1_CustomColumnDisplayText">
 
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head runat="server">
-    <title>Tool Rank Manager</title>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <dx:ASPxCallbackPanel ID="panelMain" runat="server">
-            <PanelCollection>
-                <dx:PanelContent>
-                    <dx:ASPxGridView ID="grid" runat="server" KeyFieldName="ID" AutoGenerateColumns="False"
-                        OnNeedDataSource="grid_NeedDataSource"
-                        OnRowInserting="grid_RowInserting"
-                        OnRowUpdating="grid_RowUpdating"
-                        OnRowDeleting="grid_RowDeleting"
-                        OnCustomCallback="grid_CustomCallback"
-                        OnCustomButtonCallback="grid_CustomButtonCallback">
-                        <Columns>
-                            <dx:GridViewCommandColumn ShowEditButton="True" ShowDeleteButton="True">
-                                <CustomButtons>
-                                    <dx:GridViewCommandColumnCustomButton ID="CustomAdd" Text="Add" />
-                                </CustomButtons>
-                            </dx:GridViewCommandColumn>
+    <Columns>
+        <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="頻率">
+            <EditItemTemplate>
+                <div style="display: flex; gap: 5px;">
+                    <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" Width="50px" />
+                    <span>次</span>
+                    <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" Width="50px" />
+                    <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" Width="70px">
+                        <Items>
+                            <dx:ListEditItem Text="天" Value="天" />
+                            <dx:ListEditItem Text="週" Value="週" />
+                        </Items>
+                    </dx:ASPxComboBox>
+                </div>
+            </EditItemTemplate>
+        </dx:GridViewDataColumn>
 
-                            <dx:GridViewDataTextColumn FieldName="chp_grp" Caption="CHP Group">
-                                <Settings AutoFilterCondition="Contains" />
-                            </dx:GridViewDataTextColumn>
+        <dx:GridViewDataTextColumn FieldName="OTHER_FIELD" Caption="其他欄位" />
 
-                            <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer">
-                                <Settings AutoFilterCondition="Contains" />
-                            </dx:GridViewDataTextColumn>
-
-                            <dx:GridViewDataTextColumn FieldName="ope_no" Caption="Operation">
-                                <Settings AutoFilterCondition="Contains" />
-                            </dx:GridViewDataTextColumn>
-
-                            <dx:GridViewDataTextColumn FieldName="PR" Caption="PR">
-                                <Settings AutoFilterCondition="Contains" />
-                            </dx:GridViewDataTextColumn>
-
-                            <dx:GridViewDataTextColumn FieldName="frequency" Caption="Frequency">
-                                <EditItemTemplate>
-                                    次數: <dx:ASPxTextBox ID="txtTimes" runat="server" Width="30px" />
-                                    <br />
-                                    天/週後: <dx:ASPxTextBox ID="txtValue" runat="server" Width="30px" />
-                                    <dx:ASPxComboBox ID="ddlUnit" runat="server">
-                                        <Items>
-                                            <dx:ListEditItem Text="天" Value="天" />
-                                            <dx:ListEditItem Text="週" Value="週" />
-                                        </Items>
-                                    </dx:ASPxComboBox>
-                                </EditItemTemplate>
-                            </dx:GridViewDataTextColumn>
-                        </Columns>
-
-                        <SettingsEditing Mode="Inline" NewItemRowPosition="Bottom" />
-                        <SettingsPager PageSize="20" />
-                        <Settings ShowFilterRow="True" ShowFilterRowMenu="True" />
-
-                        <Templates>
-                            <Toolbar>
-                                <dx:ASPxGridViewToolbarItem Text="新增" CommandName="Custom" ToolTip="新增一筆" Name="btnAddPopup" />
-                                <dx:ASPxGridViewToolbarItem Text="儲存" CommandName="Custom" Name="btnSaveAll" />
-                                <dx:ASPxGridViewToolbarItem Name="txtSearch" Template="SearchBoxTemplate" />
-                                <dx:ASPxGridViewToolbarItem Name="ddlLayer" Template="LayerDropdownTemplate" />
-                            </Toolbar>
-                        </Templates>
-                    </dx:ASPxGridView>
-
-                    <dx:ASPxPopupControl ID="popupAdd" runat="server" HeaderText="新增資料" PopupHorizontalAlign="WindowCenter" PopupVerticalAlign="WindowCenter" Width="300px">
-                        <ContentCollection>
-                            <dx:PopupControlContentControl>
-                                <dx:ASPxComboBox ID="ddlChpGrp" runat="server" Width="100%" DropDownStyle="DropDown">
-                                </dx:ASPxComboBox>
-                                <br /><br />
-                                <dx:ASPxButton ID="btnInsert" runat="server" Text="新增" OnClick="btnInsert_Click" />
-                            </dx:PopupControlContentControl>
-                        </ContentCollection>
-                    </dx:ASPxPopupControl>
-
-                    <dx:ASPxDropDownEdit ID="ddlLayerFilter" runat="server" Width="120px" AutoPostBack="True">
-                    </dx:ASPxDropDownEdit>
-                </dx:PanelContent>
-            </PanelCollection>
-        </dx:ASPxCallbackPanel>
-    </form>
-
-    <script type="text/javascript">
-        function OnToolbarItemClick(s, e) {
-            if (e.item.name === "btnAddPopup") {
-                popupAdd.Show();
-            } else if (e.item.name === "btnSaveAll") {
-                __doPostBack('<%= btnSaveAll.UniqueID %>', '');
-            }
-        }
-
-        function OnLayerSelected(value) {
-            grid.PerformCallback("layer:" + value);
-        }
-
-        function OnSearchKeywordChanged(value) {
-            grid.PerformCallback("filter:" + value);
-        }
-    </script>
-</body>
-</html>
-
-------------
-
-<%@ Page Language="C#" AutoEventWireup="true" CodeFile="ToolRankManager.aspx.cs" Inherits="ToolRankManager" %>
-<%@ Register Assembly="DevExpress.Web.ASPxGridView, Version=19.2.0.0, Culture=neutral, PublicKeyToken=2baf4f3d0e89ddf2" Namespace="DevExpress.Web" TagPrefix="dx" %>
-
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head runat="server">
-    <meta charset="utf-8" />
-    <title>Tool Rank Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/devextreme@21.2.5/dist/css/dx.common.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/devextreme@21.2.5/dist/css/dx.light.css" rel="stylesheet" />
-    <script src="https://cdn.jsdelivr.net/npm/devextreme@21.2.5/dist/js/dx.all.js"></script>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <div>
-            <!-- Toolbar -->
-            <dx:ASPxToolbar ID="toolbar" runat="server">
-                <Items>
-                    <dx:ToolbarItem Text="新增" OnClick="btnInsert_Click" />
-                    <dx:ToolbarItem Text="儲存" OnClick="btnSaveAll_Click" />
-                    <dx:ToolbarItem>
-                        <ItemTemplate>
-                            <asp:DropDownList ID="ddlLayerFilter" runat="server" AutoPostBack="true">
-                                <asp:ListItem Text="All" Value="All" />
-                            </asp:DropDownList>
-                        </ItemTemplate>
-                    </dx:ToolbarItem>
-                    <dx:ToolbarItem>
-                        <ItemTemplate>
-                            <asp:TextBox ID="txtSearchChpGrp" runat="server" OnTextChanged="txtSearchChpGrp_TextChanged" AutoPostBack="true" />
-                        </ItemTemplate>
-                    </dx:ToolbarItem>
-                </Items>
-            </dx:ASPxToolbar>
-
-            <br /><br />
-
-            <!-- Grid -->
-            <dx:ASPxGridView ID="grid" runat="server" ClientInstanceName="grid" OnRowInserting="grid_RowInserting" 
-                             OnRowUpdating="grid_RowUpdating" OnRowDeleting="grid_RowDeleting" OnNeedDataSource="grid_NeedDataSource" 
-                             OnCustomCallback="grid_CustomCallback" OnCustomButtonCallback="grid_CustomButtonCallback">
-                <Columns>
-                    <dx:GridViewDataTextColumn FieldName="chp_grp" Caption="CHP群組" SortIndex="0">
-                        <PropertiesTextEdit>
-                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="CHP群組為必填" />
-                        </PropertiesTextEdit>
-                    </dx:GridViewDataTextColumn>
-
-                    <dx:GridViewDataTextColumn FieldName="layer" Caption="Layer">
-                        <PropertiesTextEdit>
-                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="Layer為必填" />
-                        </PropertiesTextEdit>
-                    </dx:GridViewDataTextColumn>
-
-                    <dx:GridViewDataTextColumn FieldName="ope_no" Caption="OPE No." >
-                        <PropertiesTextEdit>
-                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="OPE No.為必填" />
-                        </PropertiesTextEdit>
-                    </dx:GridViewDataTextColumn>
-
-                    <dx:GridViewDataTextColumn FieldName="PR" Caption="PR">
-                        <PropertiesTextEdit>
-                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="PR為必填" />
-                        </PropertiesTextEdit>
-                    </dx:GridViewDataTextColumn>
-
-                    <dx:GridViewDataTextColumn FieldName="frequency" Caption="頻率">
-                        <PropertiesTextEdit>
-                            <ValidationSettings RequiredField-IsRequired="true" ErrorDisplayMode="ImageWithTooltip" ErrorText="頻率為必填" />
-                        </PropertiesTextEdit>
-                    </dx:GridViewDataTextColumn>
-
-                    <dx:GridViewCommandColumn ShowEditButton="True" ShowDeleteButton="True" ShowNewButton="True">
-                    </dx:GridViewCommandColumn>
-                </Columns>
-
-                <SettingsEditing Mode="Inline" />
-                <SettingsPager PageSize="20" />
-            </dx:ASPxGridView>
-
-        </div>
-    </form>
-
-    <script type="text/javascript">
-        // 處理儲存後端錯誤
-        function OnEndCallback(s, e) {
-            var error = s.cpError;
-            if (error) {
-                alert(error); // 或顯示在自訂區域
-                s.cpError = null;
-            }
-        }
-    </script>
-</body>
-</html>
-
+        <dx:GridViewCommandColumn ShowEditButton="true" ShowNewButtonInHeader="true" />
+    </Columns>
+</dx:ASPxGridView>
