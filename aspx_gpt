@@ -1,31 +1,61 @@
-<dx:ASPxGridView ID="ASPxGridView1" runat="server" 
-    AutoGenerateColumns="False" 
-    KeyFieldName="ID"
-    OnRowInserting="ASPxGridView1_RowInserting"
-    OnRowUpdating="ASPxGridView1_RowUpdating"
-    OnStartRowEditing="ASPxGridView1_StartRowEditing"
-    OnInitNewRow="ASPxGridView1_InitNewRow"
-    OnCustomColumnDisplayText="ASPxGridView1_CustomColumnDisplayText">
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="FrequencyGrid.aspx.cs" Inherits="你的命名空間.FrequencyGrid" %>
 
-    <Columns>
-        <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="頻率">
-            <EditItemTemplate>
-                <div style="display: flex; gap: 5px;">
-                    <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" Width="50px" />
-                    <span>次</span>
-                    <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" Width="50px" />
-                    <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" Width="70px">
-                        <Items>
-                            <dx:ListEditItem Text="天" Value="天" />
-                            <dx:ListEditItem Text="週" Value="週" />
-                        </Items>
-                    </dx:ASPxComboBox>
-                </div>
-            </EditItemTemplate>
-        </dx:GridViewDataColumn>
+<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
 
-        <dx:GridViewDataTextColumn FieldName="OTHER_FIELD" Caption="其他欄位" />
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>Frequency Grid Example</title>
+    <!-- SweetAlert2 (美美的彈窗) -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False"
+            KeyFieldName="ID"
+            OnRowInserting="ASPxGridView1_RowInserting"
+            OnRowUpdating="ASPxGridView1_RowUpdating"
+            OnRowValidating="ASPxGridView1_RowValidating">
+            
+            <ClientSideEvents EndCallback="OnGridEndCallback" />
+            
+            <Columns>
+                <dx:GridViewCommandColumn ShowEditButton="True" ShowNewButtonInHeader="True" />
+                
+                <dx:GridViewDataTextColumn FieldName="ID" Caption="ID" ReadOnly="True" />
+                
+                <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="頻率">
+                    <EditItemTemplate>
+                        <div style="display:flex; align-items:center;">
+                            <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" Width="50px" MinValue="1" Number="1" />
+                            <span>次:</span>
+                            <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" Width="50px" MinValue="1" Number="1" />
+                            <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" Width="60px">
+                                <Items>
+                                    <dx:ListEditItem Text="天" Value="天" />
+                                    <dx:ListEditItem Text="週" Value="週" />
+                                </Items>
+                            </dx:ASPxComboBox>
+                        </div>
+                    </EditItemTemplate>
+                </dx:GridViewDataColumn>
+            </Columns>
+        </dx:ASPxGridView>
+    </form>
 
-        <dx:GridViewCommandColumn ShowEditButton="true" ShowNewButtonInHeader="true" />
-    </Columns>
-</dx:ASPxGridView>
+    <script type="text/javascript">
+        function OnGridEndCallback(s, e) {
+            var errorMessage = s.cpError;
+            if (errorMessage) {
+                Swal.fire({
+                    icon: 'error',
+                    title: '錯誤',
+                    text: errorMessage,
+                    confirmButtonText: '確定'
+                });
+                s.cpError = null;
+            }
+        }
+    </script>
+</body>
+</html>
