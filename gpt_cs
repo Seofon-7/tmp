@@ -1,289 +1,80 @@
 using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Web.UI;
+using System.Collections.Specialized;
 using DevExpress.Web;
-using Oracle.DataAccess.Client;
 
-public partial class ToolRankManager : System.Web.UI.Page
+namespace 你的命名空間
 {
-    private string connStr = "User Id=your_user;Password=your_password;Data Source=your_datasource";
-    private DataTable dtData
+    public partial class FrequencyGrid : System.Web.UI.Page
     {
-        get { return Session["GridData"] as DataTable; }
-        set { Session["GridData"] = value; }
-    }
-
-    protected void Page_Load(object sender, EventArgs e)
-    {
-        if (!IsPostBack && !IsCallback)
+        protected void Page_Load(object sender, EventArgs e)
         {
-            BindGrid();
-            LoadChpGrpDropdown();
-            LoadLayerDropdown();
-        }
-    }
-
-    private void BindGrid()
-    {
-        DataTable dt = new DataTable();
-        using (var conn = new OracleConnection(connStr))
-        {
-            string query = "SELECT ID, chp_grp, layer, ope_no, PR, frequency FROM spc_tool_rank";
-            using (var cmd = new OracleCommand(query, conn))
-            using (var adapter = new OracleDataAdapter(cmd))
+            if (!IsPostBack && !IsCallback)
             {
-                adapter.Fill(dt);
+                // 綁定資料，假設你有DataSource
+                ASPxGridView1.DataSource = GetDummyData();
+                ASPxGridView1.DataBind();
             }
         }
-        dt.PrimaryKey = new DataColumn[] { dt.Columns["ID"] };
-        dt.Columns.Add("_State", typeof(string)); // for change tracking
-        foreach (DataRow row in dt.Rows)
-        {
-            row["_State"] = "Unchanged";
-        }
-        dtData = dt;
-        grid.DataSource = dt;
-        grid.DataBind();
-    }
 
-    private void LoadChpGrpDropdown()
-    {
-        ddlChpGrp.DataSource = GetChpGrpList();
-        ddlChpGrp.ValueField = "chp_grp";
-        ddlChpGrp.TextField = "chp_grp";
-        ddlChpGrp.DataBind();
-    }
-
-    private DataTable GetChpGrpList()
-    {
-        DataTable dt = new DataTable();
-        using (var conn = new OracleConnection(connStr))
+        private object GetDummyData()
         {
-            string query = "SELECT DISTINCT chp_grp FROM flow_mapping";
-            using (var cmd = new OracleCommand(query, conn))
-            using (var adapter = new OracleDataAdapter(cmd))
+            return new[]
             {
-                adapter.Fill(dt);
-            }
-        }
-        return dt;
-    }
-
-    private void LoadLayerDropdown()
-    {
-        ddlLayerFilter.Items.Clear();
-        ddlLayerFilter.Items.Add("All");
-        foreach (DataRow row in dtData.Rows)
-        {
-            string layer = row["layer"].ToString();
-            if (!ddlLayerFilter.Items.Contains(layer))
-                ddlLayerFilter.Items.Add(layer);
-        }
-    }
-
-    protected void grid_NeedDataSource(object sender, EventArgs e)
-    {
-        grid.DataSource = dtData;
-    }
-
-    protected void grid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-    {
-        if (!ValidateRow(e.NewValues, out string errorMsg))
-        {
-            grid.JSProperties["cpError"] = errorMsg;
-            e.Cancel = true;
-            return;
+                new { ID = 1, FREQUENCY = "2次:3天" },
+                new { ID = 2, FREQUENCY = "1次:1週" }
+            };
         }
 
-        DataRow newRow = dtData.NewRow();
-        foreach (var key in e.NewValues.Keys)
+        protected void ASPxGridView1_RowInserting(object sender, ASPxDataInsertingEventArgs e)
         {
-            newRow[key.ToString()] = e.NewValues[key];
-        }
-        newRow["_State"] = "Added";
-        dtData.Rows.Add(newRow);
-        e.Cancel = true;
-        grid.CancelEdit();
-    }
-
-    protected void grid_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
-    {
-        if (!ValidateRow(e.NewValues, out string errorMsg))
-        {
-            grid.JSProperties["cpError"] = errorMsg;
-            e.Cancel = true;
-            return;
+            HandleFrequencyInsertOrUpdate(sender as ASPxGridView, e.NewValues, e);
         }
 
-        DataRow row = dtData.Rows.Find(e.Keys["ID"]);
-        foreach (var key in e.NewValues.Keys)
+        protected void ASPxGridView1_RowUpdating(object sender, ASPxDataUpdatingEventArgs e)
         {
-            row[key.ToString()] = e.NewValues[key];
+            HandleFrequencyInsertOrUpdate(sender as ASPxGridView, e.NewValues, e);
         }
-        row["_State"] = "Modified";
-        e.Cancel = true;
-        grid.CancelEdit();
-    }
 
-    protected void grid_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
-    {
-        DataRow row = dtData.Rows.Find(e.Keys["ID"]);
-        if (row != null)
+        private void HandleFrequencyInsertOrUpdate(ASPxGridView grid, OrderedDictionary values, ASPxDataInsertingEventArgs e)
         {
-            row.Delete();
-        }
-        e.Cancel = true;
-        grid.CancelEdit();
-    }
+            var freqColumn = grid.Columns["FREQUENCY"] as GridViewDataColumn;
 
-    protected void grid_CustomCallback(object sender, ASPxGridViewCustomCallbackEventArgs e)
-    {
-        if (e.Parameters.StartsWith("layer:"))
-        {
-            string layer = e.Parameters.Substring(6);
-            if (layer == "All")
+            var txtFreqCount = grid.FindEditRowCellTemplateControl(freqColumn, "txtFreqCount") as ASPxSpinEdit;
+            var txtFreqUnitCount = grid.FindEditRowCellTemplateControl(freqColumn, "txtFreqUnitCount") as ASPxSpinEdit;
+            var cmbFreqUnit = grid.FindEditRowCellTemplateControl(freqColumn, "cmbFreqUnit") as ASPxComboBox;
+
+            string errorMessage = string.Empty;
+
+            if (txtFreqCount == null || txtFreqUnitCount == null || cmbFreqUnit == null)
             {
-                grid.DataSource = dtData;
+                errorMessage = "系統錯誤：找不到編輯控制項。";
             }
             else
             {
-                DataView dv = dtData.DefaultView;
-                dv.RowFilter = "layer = '" + layer + "'";
-                grid.DataSource = dv;
+                if (txtFreqCount.Value == null || Convert.ToInt32(txtFreqCount.Value) <= 0)
+                    errorMessage = "請輸入大於0的次數！";
+                else if (txtFreqUnitCount.Value == null || Convert.ToInt32(txtFreqUnitCount.Value) <= 0)
+                    errorMessage = "請輸入大於0的天/週數！";
+                else if (cmbFreqUnit.Value == null || string.IsNullOrEmpty(cmbFreqUnit.Value.ToString()))
+                    errorMessage = "請選擇天或週！";
             }
-            grid.DataBind();
-        }
-        else if (e.Parameters.StartsWith("filter:"))
-        {
-            string keyword = e.Parameters.Substring(7);
-            DataView dv = dtData.DefaultView;
-            dv.RowFilter = string.Format("chp_grp LIKE '%{0}%'", keyword.Replace("'", "''"));
-            grid.DataSource = dv;
-            grid.DataBind();
-        }
-    }
 
-    protected void grid_CustomButtonCallback(object sender, ASPxGridViewCustomButtonCallbackEventArgs e)
-    {
-        if (e.ButtonID == "CustomAdd")
-        {
-            string chpGrp = grid.GetRowValues(e.VisibleIndex, "chp_grp").ToString();
-            DataRow newRow = dtData.NewRow();
-            newRow["chp_grp"] = chpGrp;
-            newRow["layer"] = "";
-            newRow["ope_no"] = "";
-            newRow["PR"] = "";
-            newRow["frequency"] = "1次:1天";
-            newRow["_State"] = "Added";
-            dtData.Rows.Add(newRow);
-            grid.DataSource = dtData;
-            grid.DataBind();
-        }
-    }
-
-    protected void btnInsert_Click(object sender, EventArgs e)
-    {
-        string chpGrp = ddlChpGrp.Text.Trim();
-        if (!string.IsNullOrEmpty(chpGrp))
-        {
-            DataRow newRow = dtData.NewRow();
-            newRow["chp_grp"] = chpGrp;
-            newRow["layer"] = "";
-            newRow["ope_no"] = "";
-            newRow["PR"] = "";
-            newRow["frequency"] = "1次:1天";
-            newRow["_State"] = "Added";
-            dtData.Rows.Add(newRow);
-            grid.DataSource = dtData;
-            grid.DataBind();
-        }
-    }
-
-    protected void btnSaveAll_Click(object sender, EventArgs e)
-    {
-        using (var conn = new OracleConnection(connStr))
-        {
-            conn.Open();
-            foreach (DataRow row in dtData.Rows)
+            if (!string.IsNullOrEmpty(errorMessage))
             {
-                string action = row["_State"].ToString();
-                if (action == "Added")
-                {
-                    string insert = "INSERT INTO spc_tool_rank (chp_grp, layer, ope_no, PR, frequency) VALUES (:chp_grp, :layer, :ope_no, :PR, :frequency)";
-                    using (var cmd = new OracleCommand(insert, conn))
-                    {
-                        cmd.Parameters.Add(":chp_grp", row["chp_grp"]);
-                        cmd.Parameters.Add(":layer", row["layer"]);
-                        cmd.Parameters.Add(":ope_no", row["ope_no"]);
-                        cmd.Parameters.Add(":PR", row["PR"]);
-                        cmd.Parameters.Add(":frequency", row["frequency"]);
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-                else if (action == "Modified")
-                {
-                    string update = "UPDATE spc_tool_rank SET chp_grp = :chp_grp, layer = :layer, ope_no = :ope_no, PR = :PR, frequency = :frequency WHERE ID = :ID";
-                    using (var cmd = new OracleCommand(update, conn))
-                    {
-                        cmd.Parameters.Add(":chp_grp", row["chp_grp"]);
-                        cmd.Parameters.Add(":layer", row["layer"]);
-                        cmd.Parameters.Add(":ope_no", row["ope_no"]);
-                        cmd.Parameters.Add(":PR", row["PR"]);
-                        cmd.Parameters.Add(":frequency", row["frequency"]);
-                        cmd.Parameters.Add(":ID", row["ID"]);
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-                else if (row.RowState == DataRowState.Deleted)
-                {
-                    string delete = "DELETE FROM spc_tool_rank WHERE ID = :ID";
-                    using (var cmd = new OracleCommand(delete, conn))
-                    {
-                        cmd.Parameters.Add(":ID", row["ID", DataRowVersion.Original]);
-                        cmd.ExecuteNonQuery();
-                    }
-                }
+                e.Cancel = true;
+                grid.JSProperties["cpError"] = errorMessage;
+                return;
             }
-            conn.Close();
-        }
-        dtData.AcceptChanges();
-        foreach (DataRow row in dtData.Rows)
-        {
-            row["_State"] = "Unchanged";
-        }
-        grid.DataSource = dtData;
-        grid.DataBind();
-    }
 
-    private bool ValidateRow(OrderedDictionary values, out string errorMsg)
-    {
-        errorMsg = "";
-        if (string.IsNullOrWhiteSpace(values["chp_grp"]?.ToString()))
-        {
-            errorMsg = "CHP群組不能為空";
-            return false;
+            // 正常組成儲存格式
+            string freqValue = $"{txtFreqCount.Value}次:{txtFreqUnitCount.Value}{cmbFreqUnit.Value}";
+            values["FREQUENCY"] = freqValue;
         }
-        if (string.IsNullOrWhiteSpace(values["layer"]?.ToString()))
+
+        protected void ASPxGridView1_RowValidating(object sender, ASPxDataValidationEventArgs e)
         {
-            errorMsg = "Layer不能為空";
-            return false;
+            // 防止例外訊息出現在系統Log，這裡也取消掉
+            e.RowError = null;
         }
-        if (string.IsNullOrWhiteSpace(values["ope_no"]?.ToString()))
-        {
-            errorMsg = "OPE_NO不能為空";
-            return false;
-        }
-        if (string.IsNullOrWhiteSpace(values["PR"]?.ToString()))
-        {
-            errorMsg = "PR不能為空";
-            return false;
-        }
-        if (string.IsNullOrWhiteSpace(values["frequency"]?.ToString()))
-        {
-            errorMsg = "頻率不能為空";
-            return false;
-        }
-        return true;
     }
 }
