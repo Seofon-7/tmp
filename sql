@@ -1,231 +1,104 @@
-明白了您的情况，现在我更清楚您的代码结构了。基于您描述的代码结构，我可以提供一个针对性的解决方案。
+可以的！而且用 GridViewDataSpinEditColumn 搭配 GridViewDataComboBoxColumn 是更標準、也更好用的做法。
+這樣你可以直接用 DevExpress Grid 的欄位類型來做，不用自己額外在 EditItemTemplate 放一堆控制項，取值也會更順。
 
-您的问题是在 OnRowInserting 事件中无法获取 FREQUENCY 字段的值，而其他字段可以正常获取。这主要是因为您使用了自定义的 EditItemTemplate 包含多个控件来组成一个字段值。
+⸻
 
-以下是一个适合您情况的解决方案：
+✨ 你的需求整理
+	•	數字：用 GridViewDataSpinEditColumn 讓使用者填「次數」
+	•	數字：再一個 GridViewDataSpinEditColumn 填「每幾單位」
+	•	單位（日、週）：用 GridViewDataComboBoxColumn 給使用者選
 
-### 解决方案1：使用隐藏字段和客户端脚本
+這樣就不用再自己組一個複合欄位。儲存時也很乾淨，直接從 e.NewValues["欄位名"] 拿數值。
 
-这是最简单、最不侵入的解决方案。在您的 EditItemTemplate 中添加一个隐藏字段，然后使用客户端脚本在提交前合并值：
+⸻
 
-```aspx
-<dx:GridViewDataColumn FieldName="FREQUENCY" Caption="频率">
-  <EditItemTemplate>
-    <div>
-      <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" Value='<%# GetFreqValue(Eval("FREQUENCY")) %>'
-        ClientInstanceName="txtFreqCount">
-        <ClientSideEvents ValueChanged="function(s, e) { UpdateFrequencyField(); }" />
-      </dx:ASPxSpinEdit>
-      
-      <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" Value='<%# GetFreqUnitCounValue(Eval("FREQUENCY")) %>'
-        ClientInstanceName="txtFreqUnitCount">
-        <ClientSideEvents ValueChanged="function(s, e) { UpdateFrequencyField(); }" />
-      </dx:ASPxSpinEdit>
-      
-      <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" Value='<%# GetFreqUnitValue(Eval("FREQUENCY")) %>'
-        ClientInstanceName="cmbFreqUnit">
-        <Items>
-          <dx:ListEditItem Text="天" Value="day" />
-          <dx:ListEditItem Text="週" Value="week" />
-        </Items>
-        <ClientSideEvents SelectedIndexChanged="function(s, e) { UpdateFrequencyField(); }" />
-      </dx:ASPxComboBox>
-      
-      <!-- 添加隐藏字段，使用实际的 FieldName -->
-      <dx:ASPxTextBox ID="hiddenFrequency" runat="server" 
-          ClientInstanceName="hiddenFrequency" 
-          ClientVisible="false"
-          Value='<%# Eval("FREQUENCY") %>'
-          Name="FREQUENCY">
-      </dx:ASPxTextBox>
-    </div>
-    
-    <script type="text/javascript">
-      function UpdateFrequencyField() {
-        var value = txtFreqCount.GetValue();
-        var unitCount = txtFreqUnitCount.GetValue();
-        var unit = cmbFreqUnit.GetValue();
-        hiddenFrequency.SetValue(value + '|' + unitCount + '|' + unit);
-      }
-      
-      // 页面加载时初始化一次
-      $(document).ready(function() {
-        if (typeof txtFreqCount !== 'undefined' && 
-            typeof txtFreqUnitCount !== 'undefined' && 
-            typeof cmbFreqUnit !== 'undefined') {
-          UpdateFrequencyField();
-        }
-      });
-    </script>
-  </EditItemTemplate>
-</dx:GridViewDataColumn>
-```
+🔥 實際作法
 
-这样当您在 OnRowInserting 事件中，e.NewValues["FREQUENCY"] 就会包含合并后的值。
+你的 GridView 可以這樣設：
 
-### 解决方案2：修改 OnRowInserting 事件处理
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" ...>
+    <Columns>
+        <!-- 次數 -->
+        <dx:GridViewDataSpinEditColumn FieldName="FREQ_COUNT" Caption="次數">
+            <PropertiesSpinEdit MinValue="0" MaxValue="999" />
+        </dx:GridViewDataSpinEditColumn>
 
-如果您不想或不能修改前端代码，可以尝试在后台事件中查找并获取控件值：
+        <!-- 單位數量 -->
+        <dx:GridViewDataSpinEditColumn FieldName="FREQ_UNIT_COUNT" Caption="每幾單位">
+            <PropertiesSpinEdit MinValue="1" MaxValue="999" />
+        </dx:GridViewDataSpinEditColumn>
 
-```csharp
-protected void YourGrid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+        <!-- 單位（日/週） -->
+        <dx:GridViewDataComboBoxColumn FieldName="FREQ_UNIT" Caption="單位">
+            <PropertiesComboBox>
+                <Items>
+                    <dx:ListEditItem Text="天" Value="Day" />
+                    <dx:ListEditItem Text="週" Value="Week" />
+                </Items>
+            </PropertiesComboBox>
+        </dx:GridViewDataComboBoxColumn>
+
+        <!-- 其他欄位 -->
+    </Columns>
+</dx:ASPxGridView>
+
+
+
+⸻
+
+🎯 儲存時怎麼組 frequency？
+
+因為你現在是三個欄位了（FREQ_COUNT, FREQ_UNIT_COUNT, FREQ_UNIT），所以在 RowInserting 或 RowUpdating 把它組成 FREQUENCY 字串存起來就可以：
+
+protected void ASPxGridView1_RowInserting(object sender, ASPxDataInsertingEventArgs e)
 {
-    ASPxGridView grid = sender as ASPxGridView;
-    
-    // 尝试方法1：使用GetChildControl查找
-    Control newFormRow = grid.FindControl("DXInsertForm");
-    
-    ASPxSpinEdit txtFreqCount = null;
-    ASPxSpinEdit txtFreqUnitCount = null;
-    ASPxComboBox cmbFreqUnit = null;
-    
-    if (newFormRow != null)
-    {
-        // 可能需要调整控件查找的路径，您可能需要递归查找
-        txtFreqCount = FindControlRecursive(newFormRow, "txtFreqCount") as ASPxSpinEdit;
-        txtFreqUnitCount = FindControlRecursive(newFormRow, "txtFreqUnitCount") as ASPxSpinEdit;
-        cmbFreqUnit = FindControlRecursive(newFormRow, "cmbFreqUnit") as ASPxComboBox;
-    }
-    
-    // 如果找到了控件，从控件中获取值并合并
-    if (txtFreqCount != null && txtFreqUnitCount != null && cmbFreqUnit != null)
-    {
-        string frequencyStr = string.Format("{0}|{1}|{2}", 
-            txtFreqCount.Value, 
-            txtFreqUnitCount.Value, 
-            cmbFreqUnit.Value);
-        
-        e.NewValues["FREQUENCY"] = frequencyStr;
-    }
-    else
-    {
-        // 尝试方法2：从请求表单中获取值
-        // DevExpress控件的ClientInstanceName会在提交表单时使用
-        if (Page.Request.Form["txtFreqCount"] != null &&
-            Page.Request.Form["txtFreqUnitCount"] != null &&
-            Page.Request.Form["cmbFreqUnit"] != null)
-        {
-            string frequencyStr = string.Format("{0}|{1}|{2}", 
-                Page.Request.Form["txtFreqCount"], 
-                Page.Request.Form["txtFreqUnitCount"], 
-                Page.Request.Form["cmbFreqUnit"]);
-            
-            e.NewValues["FREQUENCY"] = frequencyStr;
-        }
-        else
-        {
-            // 设置默认值
-            e.NewValues["FREQUENCY"] = "1|1|day";
-        }
-    }
-    
-    // 继续处理其他值...
+    var freqCount = e.NewValues["FREQ_COUNT"]?.ToString();
+    var freqUnitCount = e.NewValues["FREQ_UNIT_COUNT"]?.ToString();
+    var freqUnit = e.NewValues["FREQ_UNIT"]?.ToString();
+
+    e.NewValues["FREQUENCY"] = $"{freqCount}:{freqUnitCount} {freqUnit}";
 }
 
-// 递归查找控件的辅助方法
-private Control FindControlRecursive(Control root, string controlID)
+（你也可以自己調格式，例如 3:2 Week）
+
+然後如果資料庫只要存 FREQUENCY 一個欄位的話，可以選擇 不需要真的存 FREQ_COUNT、FREQ_UNIT_COUNT、FREQ_UNIT 三個欄位到資料庫，這三個只是 UI 輸入用的。
+
+⸻
+
+🧠 延伸小技巧
+
+如果你一開始資料庫只有 FREQUENCY 欄位（組好的字串），那讀出來的時候可以在 RowEditing 時解析回去三個欄位，例如：
+
+protected void ASPxGridView1_StartRowEditing(object sender, ASPxStartRowEditingEventArgs e)
 {
-    if (root.ID == controlID)
-        return root;
-        
-    foreach (Control c in root.Controls)
+    var grid = sender as ASPxGridView;
+    var frequency = grid.GetRowValuesByKeyValue(e.EditingKeyValue, "FREQUENCY")?.ToString();
+
+    if (!string.IsNullOrEmpty(frequency))
     {
-        Control found = FindControlRecursive(c, controlID);
-        if (found != null)
-            return found;
+        // 解析頻率字串，例如 "3:2 Week"
+        var parts = frequency.Split(':', ' ');
+        grid.JSProperties["cpFreqCount"] = parts[0];  // 3
+        grid.JSProperties["cpFreqUnitCount"] = parts[1];  // 2
+        grid.JSProperties["cpFreqUnit"] = parts[2];  // Week
     }
-    
-    return null;
 }
-```
 
-### 解决方案3：使用 ASPxCallback 或 ASPxCallbackPanel
+配合 ClientSideEvents 或重新指派控制項的值。
 
-如果上述两种方法都不适用，可以考虑使用 ASPxCallback 或 ASPxCallbackPanel 进行异步提交：
+⸻
 
-```aspx
-<dx:ASPxCallback ID="freqCallback" runat="server" OnCallback="freqCallback_Callback" ClientInstanceName="freqCallback">
-    <ClientSideEvents CallbackComplete="function(s, e) { 
-        if (e.result) {
-            // 提交成功后刷新网格
-            ASPxGridView1.Refresh();
-        }
-    }" />
-</dx:ASPxCallback>
+✨ 簡單總結
 
-<script type="text/javascript">
-    function SubmitNewRow() {
-        // 获取所有需要的值
-        var freqCount = txtFreqCount.GetValue();
-        var freqUnitCount = txtFreqUnitCount.GetValue();
-        var freqUnit = cmbFreqUnit.GetValue();
-        
-        // 其他字段的值
-        var otherField1 = someOtherControl.GetValue();
-        
-        // 通过回调提交数据
-        freqCallback.PerformCallback(JSON.stringify({
-            freqCount: freqCount,
-            freqUnitCount: freqUnitCount,
-            freqUnit: freqUnit,
-            otherField1: otherField1
-        }));
-        
-        return false; // 阻止默认提交
-    }
-</script>
-```
+項目	原本做法	新做法
+控制項	EditItemTemplate + 手動找 SpinEdit、ComboBox	GridViewDataSpinEditColumn + GridViewDataComboBoxColumn
+取值方式	手動 FindEditRowCellTemplateControl	直接用 e.NewValues
+儲存邏輯	自己組一個 FREQUENCY 字串	自己組一個 FREQUENCY 字串（簡單）
+優點	使用者體驗普通，程式碼複雜	使用者體驗好，程式碼乾淨
 
-然后在后台处理回调:
 
-```csharp
-protected void freqCallback_Callback(object source, DevExpress.Web.CallbackEventArgs e)
-{
-    // 解析JSON数据
-    JavaScriptSerializer serializer = new JavaScriptSerializer();
-    Dictionary<string, object> values = serializer.Deserialize<Dictionary<string, object>>(e.Parameter);
-    
-    // 组合频率值
-    string freqCount = values["freqCount"].ToString();
-    string freqUnitCount = values["freqUnitCount"].ToString();
-    string freqUnit = values["freqUnit"].ToString();
-    
-    string frequencyStr = string.Format("{0}|{1}|{2}", freqCount, freqUnitCount, freqUnit);
-    
-    // 创建新行
-    DataTable dt = ViewState["GridData"] as DataTable;
-    DataRow newRow = dt.NewRow();
-    newRow["FREQUENCY"] = frequencyStr;
-    newRow["OtherField1"] = values["otherField1"];
-    
-    // 添加行并重新绑定
-    dt.Rows.Add(newRow);
-    ASPxGridView1.DataSource = dt;
-    ASPxGridView1.DataBind();
-    
-    e.Result = "true"; // 返回成功标志
-}
-```
 
-### 基于您现有代码的最佳建议：
+⸻
 
-考虑到您提供的信息和结构，我建议采用解决方案1（添加隐藏字段），这是最简单且侵入性最小的方法。如果您不能修改前端代码，那么解决方案2（修改后台代码查找控件）可能是您的最佳选择。
-
-不管您选择哪种解决方案，为了调试目的，先在 OnRowInserting 事件中添加代码查看 e.NewValues 集合的内容：
-
-```csharp
-protected void YourGrid_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-{
-    string keys = string.Join(", ", e.NewValues.Keys.Cast<string>());
-    string logMsg = "可用的键: " + keys;
-    
-    // 记录到日志或显示在页面上
-    System.Diagnostics.Debug.WriteLine(logMsg);
-    
-    // 继续处理...
-}
-```
-
-这将帮助您确认 FREQUENCY 字段是否确实缺失，以及哪些字段是可用的。
-
-希望以上建议能够帮助您解决问题！​​​​​​​​​​​​​​​​
+要不要我順便幫你列一個完整小範例（包含新增、編輯、組字串、解析字串）？
+如果要，我可以直接寫好一版你可以馬上貼去測試的！要不要？🎯
