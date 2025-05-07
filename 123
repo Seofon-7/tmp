@@ -1,237 +1,399 @@
-我理解您想要用 GridViewDataColumn 來包含 GridViewDataSpinEditColumn 和 GridViewDataComboBoxColumn，讓使用者可以以「n次:n 天/週」的格式填寫頻率。這是一個更好的方案，因為它利用了 DevExpress 控制項的原生功能。
+// ASPX页面代码
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="OracleDataPage.aspx.cs" Inherits="YourNamespace.OracleDataPage" %>
 
-我來為您設計這個解決方案：
+<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" 
+    Namespace="DevExpress.Web" TagPrefix="dx" %>
 
-```aspx
-<dx:ASPxGridView ID="gridFrequency" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
-    OnRowInserting="gridFrequency_RowInserting" OnRowUpdating="gridFrequency_RowUpdating"
-    OnRowDeleting="gridFrequency_RowDeleting" Width="100%">
-    <SettingsEditing Mode="Inline" />
-    <SettingsBehavior ConfirmDelete="true" />
-    <Settings ShowFilterRow="true" ShowGroupPanel="true" />
-    <SettingsSearchPanel Visible="true" />
-    <Columns>
-        <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" ShowNewButtonInHeader="true" />
-        <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" Visible="false" />
-        
-        <!-- 頻率次數 -->
-        <dx:GridViewDataSpinEditColumn FieldName="FREQ_COUNT" Caption="頻率次數">
-            <PropertiesSpinEdit MinValue="1" MaxValue="100" NumberType="Integer">
-                <ValidationSettings RequiredField-IsRequired="true" Display="Dynamic" />
-            </PropertiesSpinEdit>
-        </dx:GridViewDataSpinEditColumn>
-        
-        <!-- 單位計數 -->
-        <dx:GridViewDataSpinEditColumn FieldName="FREQ_UNIT_COUNT" Caption="每">
-            <PropertiesSpinEdit MinValue="1" MaxValue="100" NumberType="Integer">
-                <ValidationSettings RequiredField-IsRequired="true" Display="Dynamic" />
-            </PropertiesSpinEdit>
-        </dx:GridViewDataSpinEditColumn>
-        
-        <!-- 單位類型 -->
-        <dx:GridViewDataComboBoxColumn FieldName="FREQ_UNIT" Caption="單位">
-            <PropertiesComboBox ValueType="System.String">
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>Oracle数据加载示例</title>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <div>
+            <dx:ASPxToolbar ID="ASPxToolbar1" runat="server" Width="100%">
                 <Items>
-                    <dx:ListEditItem Text="天" Value="D" />
-                    <dx:ListEditItem Text="週" Value="W" />
+                    <dx:BarEditItem Name="cboItems" Caption="选择项目:">
+                        <EditSettings>
+                            <dx:ASPxComboBox ID="cboOracleItems" runat="server" ValueType="System.String" 
+                                DataSourceID="dsOracleItems" TextField="ITEM_NAME" ValueField="ITEM_ID"
+                                OnSelectedIndexChanged="cboOracleItems_SelectedIndexChanged" 
+                                AutoPostBack="false">
+                            </dx:ASPxComboBox>
+                        </EditSettings>
+                    </dx:BarEditItem>
+                    <dx:BarButtonItem Name="btnLoadData" Caption="加载数据" 
+                        ClientEnabled="true" 
+                        OnClick="btnLoadData_Click">
+                    </dx:BarButtonItem>
+                    <dx:BarButtonItem Name="btnSave" Caption="保存" 
+                        ClientEnabled="true" 
+                        OnClick="btnSave_Click">
+                    </dx:BarButtonItem>
                 </Items>
-                <ValidationSettings RequiredField-IsRequired="true" Display="Dynamic" />
-            </PropertiesComboBox>
-        </dx:GridViewDataComboBoxColumn>
-        
-        <!-- 顯示完整頻率格式的欄位，不可編輯 -->
-        <dx:GridViewDataTextColumn FieldName="FREQUENCY" Caption="頻率表示" ReadOnly="true" UnboundType="String">
-            <EditFormSettings Visible="False" />
-        </dx:GridViewDataTextColumn>
-    </Columns>
-    <Toolbars>
-        <dx:GridViewToolbar>
-            <Items>
-                <dx:GridViewToolbarItem Command="New" Text="新增" />
-            </Items>
-        </dx:GridViewToolbar>
-    </Toolbars>
-</dx:ASPxGridView>
-```
+            </dx:ASPxToolbar>
+            
+            <dx:ASPxGridView ID="gridData" runat="server" KeyFieldName="ID" Width="100%" 
+                OnRowInserting="gridData_RowInserting"
+                OnRowUpdating="gridData_RowUpdating">
+                <SettingsEditing Mode="Inline" />
+                <SettingsBehavior AllowFocusedRow="true" />
+                <Columns>
+                    <!-- 您需要根据实际表结构定义列 -->
+                    <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" VisibleIndex="0">
+                        <EditFormSettings Visible="False" />
+                    </dx:GridViewDataTextColumn>
+                    <dx:GridViewDataTextColumn FieldName="FIELD1" Caption="字段1" VisibleIndex="1">
+                    </dx:GridViewDataTextColumn>
+                    <dx:GridViewDataTextColumn FieldName="FIELD2" Caption="字段2" VisibleIndex="2">
+                    </dx:GridViewDataTextColumn>
+                    <dx:GridViewDataTextColumn FieldName="FIELD3" Caption="字段3" VisibleIndex="3">
+                    </dx:GridViewDataTextColumn>
+                    <dx:GridViewCommandColumn ShowEditButton="true" ShowNewButton="true" VisibleIndex="4">
+                    </dx:GridViewCommandColumn>
+                </Columns>
+                <Settings ShowFilterRow="true" ShowGroupPanel="true" />
+                <SettingsSearchPanel Visible="true" />
+            </dx:ASPxGridView>
 
-然後在後端程式碼中，您需要在插入和更新時組合這些值：
+            <asp:SqlDataSource ID="dsOracleItems" runat="server" 
+                ProviderName="System.Data.OracleClient"
+                ConnectionString="<%$ ConnectionStrings:OracleConnection %>" 
+                SelectCommand="SELECT ITEM_ID, ITEM_NAME FROM YOUR_ITEM_TABLE ORDER BY ITEM_NAME">
+            </asp:SqlDataSource>
+        </div>
+    </form>
+</body>
+</html>
 
-```csharp
-protected void gridFrequency_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+// C#后台代码 (OracleDataPage.aspx.cs)
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Configuration;
+using System.Web.UI;
+using Oracle.ManagedDataAccess.Client;
+using DevExpress.Web;
+
+namespace YourNamespace
 {
-    try
+    public partial class OracleDataPage : System.Web.UI.Page
     {
-        // 直接從 e.NewValues 中獲取各欄位的值
-        int freqCount = Convert.ToInt32(e.NewValues["FREQ_COUNT"] ?? 1);
-        int unitCount = Convert.ToInt32(e.NewValues["FREQ_UNIT_COUNT"] ?? 1);
-        string unit = e.NewValues["FREQ_UNIT"]?.ToString() ?? "D";
+        // 存储已加载的项目ID，用于避免重复加载
+        private List<string> loadedItems = new List<string>();
         
-        // 組合成頻率字符串，例如：2/3D 表示每3天執行2次
-        string frequency = string.Format("{0}/{1}{2}", freqCount, unitCount, unit);
-        
-        // 將組合後的頻率值加入到e.NewValues中，這樣就可以使用它進行資料庫操作
-        e.NewValues["FREQUENCY"] = frequency;
-        
-        // 執行插入操作
-        using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+        protected void Page_Load(object sender, EventArgs e)
         {
-            conn.Open();
-            using (SqlCommand cmd = new SqlCommand())
+            if (!IsPostBack)
             {
-                cmd.Connection = conn;
-                cmd.CommandType = CommandType.Text;
-                cmd.CommandText = "INSERT INTO YourTable (FREQUENCY) VALUES (@FREQUENCY)";
+                // 初始化页面
+                InitializeGridView();
                 
-                cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
+                // 如果Session中有存储的数据，恢复它
+                if (Session["GridData"] != null)
+                {
+                    gridData.DataSource = Session["GridData"];
+                    gridData.DataBind();
+                }
                 
-                cmd.ExecuteNonQuery();
+                // 恢复已加载项目列表
+                if (Session["LoadedItems"] != null)
+                {
+                    loadedItems = (List<string>)Session["LoadedItems"];
+                }
             }
         }
-        
-        // 取消GridView默認的插入操作，因為我們已經手動處理了
-        e.Cancel = true;
-        
-        // 重新綁定網格以顯示新數據
-        BindGrid();
-    }
-    catch (Exception ex)
-    {
-        ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
-            $"alert('插入數據時發生錯誤: {ex.Message.Replace("'", "\\'")}');", true);
-        e.Cancel = true;
-    }
-}
 
-protected void gridFrequency_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
-{
-    try
-    {
-        // 獲取頻率相關的值
-        int freqCount = Convert.ToInt32(e.NewValues["FREQ_COUNT"] ?? 1);
-        int unitCount = Convert.ToInt32(e.NewValues["FREQ_UNIT_COUNT"] ?? 1);
-        string unit = e.NewValues["FREQ_UNIT"]?.ToString() ?? "D";
-        
-        // 組合成頻率字符串
-        string frequency = string.Format("{0}/{1}{2}", freqCount, unitCount, unit);
-        
-        // 執行更新操作
-        using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+        private void InitializeGridView()
         {
-            conn.Open();
-            using (SqlCommand cmd = new SqlCommand())
+            // 创建DataTable并设置结构
+            DataTable dt = new DataTable();
+            dt.Columns.Add("ID", typeof(string));
+            dt.Columns.Add("FIELD1", typeof(string));
+            dt.Columns.Add("FIELD2", typeof(string));
+            dt.Columns.Add("FIELD3", typeof(string));
+            // 添加更多列...
+            
+            // 将DataTable绑定到GridView
+            gridData.DataSource = dt;
+            gridData.DataBind();
+            
+            // 保存到Session
+            Session["GridData"] = dt;
+        }
+
+        protected void btnLoadData_Click(object sender, EventArgs e)
+        {
+            // 获取选中的项目ID
+            ASPxComboBox comboBox = ASPxToolbar1.FindEditItemByName("cboItems").FindControl("cboOracleItems") as ASPxComboBox;
+            if (comboBox == null || string.IsNullOrEmpty(comboBox.Value?.ToString()))
             {
-                cmd.Connection = conn;
-                cmd.CommandType = CommandType.Text;
-                cmd.CommandText = "UPDATE YourTable SET FREQUENCY = @FREQUENCY WHERE ID = @ID";
+                ShowMessage("请先选择一个项目");
+                return;
+            }
+
+            string selectedItemId = comboBox.Value.ToString();
+            
+            // 检查是否已经加载过该项目，避免重复加载
+            if (loadedItems.Contains(selectedItemId))
+            {
+                ShowMessage("此项目数据已经加载，请选择其他项目");
+                return;
+            }
+
+            // 从Oracle获取数据
+            DataTable dtResults = GetDataFromOracle(selectedItemId);
+            
+            if (dtResults != null && dtResults.Rows.Count > 0)
+            {
+                // 获取当前GridView的数据源
+                DataTable currentData = Session["GridData"] as DataTable;
+                if (currentData == null)
+                {
+                    currentData = new DataTable();
+                    // 根据dtResults创建相同结构的表
+                    foreach (DataColumn col in dtResults.Columns)
+                    {
+                        currentData.Columns.Add(col.ColumnName, col.DataType);
+                    }
+                }
+
+                // 将新数据合并到当前数据中
+                foreach (DataRow row in dtResults.Rows)
+                {
+                    currentData.ImportRow(row);
+                }
+
+                // 更新GridView
+                gridData.DataSource = currentData;
+                gridData.DataBind();
                 
-                cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
-                cmd.Parameters.AddWithValue("@ID", e.Keys["ID"]);
+                // 保存到Session
+                Session["GridData"] = currentData;
                 
-                cmd.ExecuteNonQuery();
+                // 添加到已加载项目列表
+                loadedItems.Add(selectedItemId);
+                Session["LoadedItems"] = loadedItems;
+                
+                ShowMessage("数据已成功加载");
+            }
+            else
+            {
+                ShowMessage("未找到相关数据");
             }
         }
-        
-        // 取消GridView默認的更新操作
-        e.Cancel = true;
-        
-        // 重新綁定網格
-        BindGrid();
-    }
-    catch (Exception ex)
-    {
-        ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
-            $"alert('更新數據時發生錯誤: {ex.Message.Replace("'", "\\'")}');", true);
-        e.Cancel = true;
+
+        private DataTable GetDataFromOracle(string itemId)
+        {
+            DataTable dt = new DataTable();
+            
+            // 获取连接字符串
+            string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
+            
+            using (OracleConnection conn = new OracleConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+                    
+                    // 创建命令并添加参数
+                    using (OracleCommand cmd = new OracleCommand("SELECT * FROM YOUR_DATA_TABLE WHERE ITEM_ID = :ItemId", conn))
+                    {
+                        cmd.Parameters.Add(new OracleParameter("ItemId", OracleDbType.Varchar2)).Value = itemId;
+                        
+                        // 填充DataTable
+                        using (OracleDataAdapter adapter = new OracleDataAdapter(cmd))
+                        {
+                            adapter.Fill(dt);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 记录错误
+                    System.Diagnostics.Debug.WriteLine("Oracle查询错误: " + ex.Message);
+                    ShowMessage("获取数据时发生错误: " + ex.Message);
+                }
+            }
+            
+            return dt;
+        }
+
+        protected void btnSave_Click(object sender, EventArgs e)
+        {
+            // 获取当前GridView的数据
+            DataTable currentData = Session["GridData"] as DataTable;
+            if (currentData == null || currentData.Rows.Count == 0)
+            {
+                ShowMessage("没有数据可以保存");
+                return;
+            }
+
+            // 保存数据到Oracle
+            if (SaveDataToOracle(currentData))
+            {
+                ShowMessage("数据已成功保存到数据库");
+            }
+            else
+            {
+                ShowMessage("保存数据时发生错误");
+            }
+        }
+
+        private bool SaveDataToOracle(DataTable dt)
+        {
+            bool success = true;
+            string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
+            
+            using (OracleConnection conn = new OracleConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+                    
+                    // 遍历DataTable中的每一行
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        // 检查此行是否已经存在于数据库中
+                        bool rowExists = CheckIfRowExists(conn, row["ID"].ToString());
+                        
+                        if (!rowExists)
+                        {
+                            // 插入新行
+                            using (OracleCommand cmd = new OracleCommand())
+                            {
+                                cmd.Connection = conn;
+                                cmd.CommandText = "INSERT INTO YOUR_DATA_TABLE (ID, FIELD1, FIELD2, FIELD3) VALUES (:ID, :FIELD1, :FIELD2, :FIELD3)";
+                                
+                                cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = row["ID"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"].ToString();
+                                
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+                        else
+                        {
+                            // 更新现有行
+                            using (OracleCommand cmd = new OracleCommand())
+                            {
+                                cmd.Connection = conn;
+                                cmd.CommandText = "UPDATE YOUR_DATA_TABLE SET FIELD1 = :FIELD1, FIELD2 = :FIELD2, FIELD3 = :FIELD3 WHERE ID = :ID";
+                                
+                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = row["ID"].ToString();
+                                
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 记录错误
+                    System.Diagnostics.Debug.WriteLine("Oracle保存错误: " + ex.Message);
+                    ShowMessage("保存数据时发生错误: " + ex.Message);
+                    success = false;
+                }
+            }
+            
+            return success;
+        }
+
+        private bool CheckIfRowExists(OracleConnection conn, string id)
+        {
+            using (OracleCommand cmd = new OracleCommand("SELECT COUNT(*) FROM YOUR_DATA_TABLE WHERE ID = :ID", conn))
+            {
+                cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = id;
+                int count = Convert.ToInt32(cmd.ExecuteScalar());
+                return count > 0;
+            }
+        }
+
+        protected void gridData_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+        {
+            // 生成新的ID
+            string newId = Guid.NewGuid().ToString("N").Substring(0, 10);
+            e.NewValues["ID"] = newId;
+            
+            // 获取当前GridView的数据
+            DataTable currentData = Session["GridData"] as DataTable;
+            
+            // 创建新行并填充数据
+            DataRow newRow = currentData.NewRow();
+            foreach (var field in e.NewValues.Keys)
+            {
+                newRow[field.ToString()] = e.NewValues[field] ?? DBNull.Value;
+            }
+            
+            // 添加新行到DataTable
+            currentData.Rows.Add(newRow);
+            
+            // 更新Session和GridView
+            Session["GridData"] = currentData;
+            gridData.DataSource = currentData;
+            gridData.DataBind();
+            
+            // 取消默认插入操作，因为我们已经手动处理了
+            e.Cancel = true;
+        }
+
+        protected void gridData_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+        {
+            // 获取当前GridView的数据
+            DataTable currentData = Session["GridData"] as DataTable;
+            
+            // 找到要更新的行
+            string idToUpdate = e.Keys["ID"].ToString();
+            DataRow[] rowsToUpdate = currentData.Select("ID = '" + idToUpdate + "'");
+            
+            if (rowsToUpdate.Length > 0)
+            {
+                // 更新行数据
+                foreach (var field in e.NewValues.Keys)
+                {
+                    rowsToUpdate[0][field.ToString()] = e.NewValues[field] ?? DBNull.Value;
+                }
+                
+                // 更新Session和GridView
+                Session["GridData"] = currentData;
+                gridData.DataSource = currentData;
+                gridData.DataBind();
+            }
+            
+            // 取消默认更新操作，因为我们已经手动处理了
+            e.Cancel = true;
+        }
+
+        private void ShowMessage(string message)
+        {
+            // 显示消息给用户
+            ScriptManager.RegisterStartupScript(this, GetType(), "alert", $"alert('{message}');", true);
+        }
+
+        protected void cboOracleItems_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            // 可以在这里处理下拉框选择变化的事件
+        }
     }
 }
-```
 
-在資料綁定時，您需要將 FREQUENCY 欄位拆分為三個部分：
+// Web.config配置 (关键部分)
+<!-- 
+在Web.config文件中添加以下连接字符串配置:
 
-```csharp
-protected void BindGrid()
-{
-    DataTable dt = GetFrequencyData();
-    
-    // 拆分FREQUENCY欄位到三個單獨的欄位
-    dt.Columns.Add("FREQ_COUNT", typeof(int));
-    dt.Columns.Add("FREQ_UNIT_COUNT", typeof(int));
-    dt.Columns.Add("FREQ_UNIT", typeof(string));
-    
-    foreach (DataRow row in dt.Rows)
-    {
-        string frequency = row["FREQUENCY"].ToString();
-        
-        // 拆分頻率值
-        int freqValue = GetFreqValue(frequency);
-        int unitCount = GetFreqUnitCountValue(frequency);
-        string unit = GetFreqUnitValue(frequency);
-        
-        row["FREQ_COUNT"] = freqValue;
-        row["FREQ_UNIT_COUNT"] = unitCount;
-        row["FREQ_UNIT"] = unit;
-    }
-    
-    gridFrequency.DataSource = dt;
-    gridFrequency.DataBind();
-}
-
-// 獲取頻率值（次數）
-protected int GetFreqValue(object freqObj)
-{
-    if (freqObj == null || freqObj == DBNull.Value || string.IsNullOrEmpty(freqObj.ToString()))
-        return 1;
-    
-    string freqStr = freqObj.ToString();
-    string[] parts = freqStr.Split('/');
-    if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
-    {
-        int value;
-        if (int.TryParse(parts[0], out value))
-            return value;
-    }
-    return 1;
-}
-
-// 獲取頻率單位計數
-protected int GetFreqUnitCountValue(object freqObj)
-{
-    if (freqObj == null || freqObj == DBNull.Value || string.IsNullOrEmpty(freqObj.ToString()))
-        return 1;
-    
-    string freqStr = freqObj.ToString();
-    string[] parts = freqStr.Split('/');
-    if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
-    {
-        string unitCountStr = parts[1].TrimEnd('D', 'W');
-        int value;
-        if (int.TryParse(unitCountStr, out value))
-            return value;
-    }
-    return 1;
-}
-
-// 獲取頻率單位（D或W）
-protected string GetFreqUnitValue(object freqObj)
-{
-    if (freqObj == null || freqObj == DBNull.Value || string.IsNullOrEmpty(freqObj.ToString()))
-        return "D";
-    
-    string freqStr = freqObj.ToString();
-    if (freqStr.EndsWith("D"))
-        return "D";
-    else if (freqStr.EndsWith("W"))
-        return "W";
-    
-    return "D";
-}
-```
-
-這種方法有幾個優點：
-
-1. 使用標準的 GridViewDataSpinEditColumn 和 GridViewDataComboBoxColumn，而不是自定義的編輯模板
-2. 無需處理複雜的 FindControl 邏輯，直接從 e.NewValues 獲取值
-3. 自動處理驗證和數據轉換
-4. 每個欄位都有明確的標籤，讓用戶理解輸入內容
-
-這種方法應該能解決您取不到 FREQUENCY 欄位值的問題，因為它避開了使用自定義編輯模板，改用標準欄位類型。​​​​​​​​​​​​​​​​
+<configuration>
+  <connectionStrings>
+    <add name="OracleConnection" 
+         connectionString="Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=您的Oracle服务器)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=您的服务名)));User Id=用户名;Password=密码;" 
+         providerName="Oracle.ManagedDataAccess.Client" />
+  </connectionStrings>
+  
+  <!-- 其他配置... -->
+</configuration>
+-->
