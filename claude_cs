@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Web.UI;
+using System.Web.UI.WebControls;
 using DevExpress.Web;
 using Oracle.ManagedDataAccess.Client;
 using System.Configuration;
@@ -63,12 +64,15 @@ namespace YourNamespace
                             adapter.Fill(dt);
                         }
                         
-                        // 绑定下拉选单数据
-                        ASPxComboBox comboBox = ((ToolbarComboBoxItem)ASPxToolbar1.Items.FindByName("cmbItems")).ComboBox;
-                        comboBox.DataSource = dt;
-                        comboBox.ValueField = "ID";
-                        comboBox.TextField = "NAME";
-                        comboBox.DataBind();
+                        // 获取GridView工具栏中的ComboBox并绑定数据
+                        ASPxComboBox comboBox = (ASPxComboBox)gridView.FindToolbarTemplateControl("cmbItems");
+                        if (comboBox != null)
+                        {
+                            comboBox.DataSource = dt;
+                            comboBox.ValueField = "ID";
+                            comboBox.TextField = "NAME";
+                            comboBox.DataBind();
+                        }
                     }
                 }
             }
@@ -177,6 +181,126 @@ namespace YourNamespace
         }
 
         /// <summary>
+        /// GridView 自定义回调处理
+        /// </summary>
+        protected void gridView_CustomCallback(object sender, ASPxGridViewCustomCallbackEventArgs e)
+        {
+            if (e.Parameters == "LoadData")
+            {
+                LoadGridViewData();
+            }
+        }
+
+        /// <summary>
+        /// 保存到数据库按钮回调处理
+        /// </summary>
+        protected void callbackSaveToDb_Callback(object source, DevExpress.Web.CallbackEventArgs e)
+        {
+            try
+            {
+                DataTable currentData = Session["GridViewData"] as DataTable;
+                if (currentData != null && currentData.Rows.Count > 0)
+                {
+                    // 批量保存数据到Oracle数据库
+                    int successCount = SaveAllDataToDatabase(currentData);
+                    e.Result = "success";
+                }
+                else
+                {
+                    e.Result = "没有数据需要保存";
+                }
+            }
+            catch (Exception ex)
+            {
+                e.Result = ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// 批量保存数据到数据库
+        /// </summary>
+        private int SaveAllDataToDatabase(DataTable dataTable)
+        {
+            int successCount = 0;
+            
+            using (OracleConnection conn = new OracleConnection(connectionString))
+            {
+                conn.Open();
+                using (OracleTransaction transaction = conn.BeginTransaction())
+                {
+                    try
+                    {
+                        foreach (DataRow row in dataTable.Rows)
+                        {
+                            // 检查此行是否已经在数据库中
+                            bool exists = CheckIfDataExists(conn, transaction, row["ID"].ToString());
+                            
+                            if (exists)
+                            {
+                                // 更新已存在的记录
+                                string updateSql = @"UPDATE YOUR_TARGET_TABLE 
+                                              SET FIELD1 = :Field1, FIELD2 = :Field2
+                                              WHERE ID = :ID";
+                                
+                                using (OracleCommand cmd = new OracleCommand(updateSql, conn, transaction))
+                                {
+                                    cmd.Parameters.Add(new OracleParameter("Field1", row["Field1"]));
+                                    cmd.Parameters.Add(new OracleParameter("Field2", row["Field2"]));
+                                    cmd.Parameters.Add(new OracleParameter("ID", row["ID"]));
+                                    
+                                    successCount += cmd.ExecuteNonQuery();
+                                }
+                            }
+                            else
+                            {
+                                // 插入新记录
+                                string insertSql = @"INSERT INTO YOUR_TARGET_TABLE 
+                                              (ID, FIELD1, FIELD2) 
+                                              VALUES 
+                                              (:ID, :Field1, :Field2)";
+                                
+                                using (OracleCommand cmd = new OracleCommand(insertSql, conn, transaction))
+                                {
+                                    cmd.Parameters.Add(new OracleParameter("ID", row["ID"]));
+                                    cmd.Parameters.Add(new OracleParameter("Field1", row["Field1"]));
+                                    cmd.Parameters.Add(new OracleParameter("Field2", row["Field2"]));
+                                    
+                                    successCount += cmd.ExecuteNonQuery();
+                                }
+                            }
+                        }
+                        
+                        // 提交事务
+                        transaction.Commit();
+                    }
+                    catch (Exception)
+                    {
+                        // 回滚事务
+                        transaction.Rollback();
+                        throw;
+                    }
+                }
+            }
+            
+            return successCount;
+        }
+
+        /// <summary>
+        /// 检查数据是否已存在
+        /// </summary>
+        private bool CheckIfDataExists(OracleConnection conn, OracleTransaction transaction, string id)
+        {
+            string sql = "SELECT COUNT(*) FROM YOUR_TARGET_TABLE WHERE ID = :ID";
+            
+            using (OracleCommand cmd = new OracleCommand(sql, conn, transaction))
+            {
+                cmd.Parameters.Add(new OracleParameter("ID", id));
+                int count = Convert.ToInt32(cmd.ExecuteScalar());
+                return count > 0;
+            }
+        }
+
+        /// <summary>
         /// 根据选中值查询数据
         /// </summary>
         private DataTable QueryDataBySelectedValue(string selectedValue)
@@ -219,34 +343,15 @@ namespace YourNamespace
         {
             try
             {
-                // 插入数据到 Oracle 数据库
-                using (OracleConnection conn = new OracleConnection(connectionString))
-                {
-                    conn.Open();
-                    
-                    // 构建 INSERT SQL 语句 (根据实际字段调整)
-                    string sql = @"INSERT INTO YOUR_TARGET_TABLE 
-                                  (ID, FIELD1, FIELD2) 
-                                  VALUES 
-                                  (:ID, :Field1, :Field2)";
-                    
-                    using (OracleCommand cmd = new OracleCommand(sql, conn))
-                    {
-                        // 添加参数 (根据实际字段调整)
-                        cmd.Parameters.Add(new OracleParameter("ID", Guid.NewGuid().ToString())); // 或其他 ID 生成逻辑
-                        cmd.Parameters.Add(new OracleParameter("Field1", e.NewValues["Field1"]));
-                        cmd.Parameters.Add(new OracleParameter("Field2", e.NewValues["Field2"]));
-                        
-                        cmd.ExecuteNonQuery();
-                    }
-                }
+                // 创建新的ID
+                string newId = Guid.NewGuid().ToString();
                 
                 // 添加到当前 GridView 数据
                 DataTable currentData = Session["GridViewData"] as DataTable;
                 DataRow newRow = currentData.NewRow();
                 
                 // 设置值 (根据实际字段调整)
-                newRow["ID"] = Guid.NewGuid().ToString(); // 或其他 ID 生成逻辑
+                newRow["ID"] = newId;
                 newRow["Field1"] = e.NewValues["Field1"];
                 newRow["Field2"] = e.NewValues["Field2"];
                 
@@ -276,27 +381,6 @@ namespace YourNamespace
         {
             try
             {
-                // 更新 Oracle 数据库中的数据
-                using (OracleConnection conn = new OracleConnection(connectionString))
-                {
-                    conn.Open();
-                    
-                    // 构建 UPDATE SQL 语句 (根据实际字段调整)
-                    string sql = @"UPDATE YOUR_TARGET_TABLE 
-                                  SET FIELD1 = :Field1, FIELD2 = :Field2
-                                  WHERE ID = :ID";
-                    
-                    using (OracleCommand cmd = new OracleCommand(sql, conn))
-                    {
-                        // 添加参数 (根据实际字段调整)
-                        cmd.Parameters.Add(new OracleParameter("Field1", e.NewValues["Field1"]));
-                        cmd.Parameters.Add(new OracleParameter("Field2", e.NewValues["Field2"]));
-                        cmd.Parameters.Add(new OracleParameter("ID", e.Keys["ID"]));
-                        
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-                
                 // 更新当前 GridView 数据
                 DataTable currentData = Session["GridViewData"] as DataTable;
                 string id = e.Keys["ID"].ToString();
