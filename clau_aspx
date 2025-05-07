@@ -1,178 +1,128 @@
-当然可以使用 GridViewToolbar 的写法，这种方式更加简洁且更好地集成 DevExpress 的功能。我会重新调整代码，使用 ASPxGridView 的 ToolbarItemCollection 来实现您的需求。
+我会帮你实现在 .NET 4.6.2 和 DevExpress 19.2 环境中创建带有下拉菜单的工具栏功能。下面是详细的实现方案。
 
-以下是使用 GridViewToolbar 实现的方案：
+首先，我们需要在 ASP.NET 页面中添加 ToolBar 控件和 GridView 控件，然后在代码后台实现相关功能。
+
+## 界面设计
+
+我们可以用 ASPxToolbar 和 ASPxGridView 组合实现你需要的功能：
 
 ```csharp
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="YourPage.aspx.cs" Inherits="YourNamespace.YourPage" %>
+<%-- ASPX 文件 --%>
+<dx:ASPxToolbar ID="mainToolbar" runat="server" Width="100%">
+    <Items>
+        <dx:ToolbarItem Name="ComboBox" BeginGroup="true">
+            <Template>
+                <dx:ASPxComboBox ID="dataSourceCombo" runat="server" Width="200px" 
+                    ValueField="ID" TextField="NAME" OnCallback="dataSourceCombo_Callback">
+                    <ClientSideEvents EndCallback="function(s, e) { 
+                        if(s.GetSelectedIndex() > -1) {
+                            mainToolbar.GetItemByName('FetchButton').SetEnabled(true);
+                        }
+                    }" />
+                </dx:ASPxComboBox>
+            </Template>
+        </dx:ToolbarItem>
+        <dx:ToolbarItem Name="FetchButton" Text="获取数据" Image-IconID="actions_download_16x16" Enabled="false"
+            ClientSideEvents-Click="function(s, e) { OnFetchButtonClick(); }">
+        </dx:ToolbarItem>
+        <dx:ToolbarItem Name="SaveButton" Text="保存" Image-IconID="save_save_16x16" 
+            ClientSideEvents-Click="function(s, e) { gridView.UpdateEdit(); }">
+        </dx:ToolbarItem>
+    </Items>
+    <ClientSideEvents Init="function(s, e) {
+        window.mainToolbar = s;
+    }" />
+</dx:ASPxToolbar>
 
-<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" 
-    Namespace="DevExpress.Web" TagPrefix="dx" %>
-
-<!DOCTYPE html>
-
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head runat="server">
-    <title>数据管理页面</title>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <div>
-            <dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID" Width="100%" 
-                OnRowInserting="gridView_RowInserting"
-                OnRowUpdating="gridView_RowUpdating"
-                OnCustomCallback="gridView_CustomCallback"
-                ClientInstanceName="gridView">
-                <SettingsEditing Mode="Inline" />
-                <SettingsBehavior AllowFocusedRow="true" />
-                
-                <!-- 使用 GridViewToolbar -->
-                <SettingsCommandButton>
-                    <NewButton Text="新增" />
-                    <EditButton Text="编辑" />
-                    <DeleteButton Text="删除" />
-                    <UpdateButton Text="保存" />
-                    <CancelButton Text="取消" />
-                </SettingsCommandButton>
-                
-                <Toolbars>
-                    <dx:GridViewToolbar>
-                        <Items>
-                            <!-- 下拉选单 -->
-                            <dx:GridViewToolbarItem>
-                                <Template>
-                                    <dx:ASPxComboBox ID="cmbItems" runat="server" Width="200px" 
-                                        ValueField="ValueField" TextField="TextField" 
-                                        ClientInstanceName="cmbItems">
-                                        <CaptionSettings Text="选择项目:" Position="Left" />
-                                    </dx:ASPxComboBox>
-                                </Template>
-                            </dx:GridViewToolbarItem>
-                            
-                            <!-- 查询按钮 -->
-                            <dx:GridViewToolbarItem Name="btnQuery" Text="查询" BeginGroup="true">
-                                <Image Url="~/Images/search.png" />
-                                <ItemStyle CssClass="buttonStyle" />
-                                <ClientSideEvents Click="function(s, e) { OnQueryButtonClick(); }" />
-                            </dx:GridViewToolbarItem>
-                            
-                            <!-- 保存到数据库按钮 -->
-                            <dx:GridViewToolbarItem Name="btnSaveToDb" Text="保存到数据库" BeginGroup="true">
-                                <Image Url="~/Images/save.png" />
-                                <ClientSideEvents Click="function(s, e) { OnSaveToDbButtonClick(); }" />
-                            </dx:GridViewToolbarItem>
-                            
-                            <!-- 其他工具栏项目 -->
-                            <dx:GridViewToolbarItem Command="New" Text="新增行" BeginGroup="true">
-                                <Image Url="~/Images/new.png" />
-                            </dx:GridViewToolbarItem>
-                            
-                            <dx:GridViewToolbarItem Command="Refresh" Text="刷新">
-                                <Image Url="~/Images/refresh.png" />
-                            </dx:GridViewToolbarItem>
-                        </Items>
-                    </dx:GridViewToolbar>
-                </Toolbars>
-                
-                <Columns>
-                    <!-- 这里将根据您的表字段添加列 -->
-                    <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" VisibleIndex="0" Width="100px" />
-                    <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" VisibleIndex="1">
-                        <EditFormSettings Visible="False" />
-                    </dx:GridViewDataTextColumn>
-                    <dx:GridViewDataTextColumn FieldName="Field1" VisibleIndex="2" />
-                    <dx:GridViewDataTextColumn FieldName="Field2" VisibleIndex="3" />
-                    <!-- 添加您需要的其他列 -->
-                </Columns>
-                <SettingsPager PageSize="10" />
-                <ClientSideEvents EndCallback="OnGridEndCallback" />
-            </dx:ASPxGridView>
-            
-            <dx:ASPxCallback ID="callbackQuery" runat="server" OnCallback="callbackQuery_Callback" 
-                ClientInstanceName="callbackQuery">
-                <ClientSideEvents CallbackComplete="OnQueryCallbackComplete" />
-            </dx:ASPxCallback>
-            
-            <dx:ASPxCallback ID="callbackSaveToDb" runat="server" OnCallback="callbackSaveToDb_Callback" 
-                ClientInstanceName="callbackSaveToDb">
-                <ClientSideEvents CallbackComplete="OnSaveToDbCallbackComplete" />
-            </dx:ASPxCallback>
-        </div>
-    </form>
-    
-    <script type="text/javascript">
-        function OnQueryButtonClick() {
-            var selectedValue = cmbItems.GetValue();
-            if (selectedValue) {
-                callbackQuery.PerformCallback(selectedValue);
-            } else {
-                alert("请先选择一个项目");
-            }
-        }
-        
-        function OnQueryCallbackComplete(s, e) {
-            if (e.result === "success") {
-                gridView.PerformCallback("LoadData");
-            } else if (e.result === "duplicate") {
-                alert("数据已存在，避免重复加载");
-            } else if (e.result === "error") {
-                alert("查询数据时发生错误");
-            }
-        }
-        
-        function OnSaveToDbButtonClick() {
-            callbackSaveToDb.PerformCallback();
-        }
-        
-        function OnSaveToDbCallbackComplete(s, e) {
-            if (e.result === "success") {
-                alert("数据已成功保存到数据库");
-            } else {
-                alert("保存数据时发生错误: " + e.result);
-            }
-        }
-        
-        function OnGridEndCallback(s, e) {
-            // 可以在这里处理网格回调完成后的逻辑
-        }
-    </script>
-</body>
-</html>
+<dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID" Width="100%" 
+    OnRowInserting="gridView_RowInserting" 
+    OnInitNewRow="gridView_InitNewRow"
+    OnBeforePerformDataSelect="gridView_BeforePerformDataSelect">
+    <Settings ShowStatusBar="Visible" />
+    <SettingsEditing Mode="Inline" />
+    <SettingsBehavior AllowFocusedRow="true" />
+    <Columns>
+        <%-- 添加适合你需求的列 --%>
+        <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" />
+        <dx:GridViewDataTextColumn FieldName="FIELD1" />
+        <dx:GridViewDataTextColumn FieldName="FIELD2" />
+        <dx:GridViewCommandColumn ShowEditButton="true" ShowNewButtonInHeader="true" />
+    </Columns>
+    <Toolbars>
+        <dx:GridViewToolbar>
+            <Items>
+                <dx:GridViewToolbarItem Command="Refresh" Text="刷新" />
+                <dx:GridViewToolbarItem Name="AddToDatabase" Text="加入数据库" 
+                    Image-IconID="actions_add_16x16" 
+                    ClientSideEvents-Click="function(s, e) { SaveToDatabase(); }" />
+            </Items>
+        </dx:GridViewToolbar>
+    </Toolbars>
+    <ClientSideEvents Init="function(s, e) { window.gridView = s; }" />
+</dx:ASPxGridView>
 ```
 
-现在让我们来看后台代码实现:​​​​​​​​​​​​​​​​
+## JavaScript 客户端代码
 
-相比之前的实现，使用 GridViewToolbar 的方式有以下几个优点：
+```javascript
+function OnFetchButtonClick() {
+    // 获取下拉框选中的值
+    var selectedValue = dataSourceCombo.GetValue();
+    if (selectedValue) {
+        // 调用服务器端方法获取数据
+        gridViewCallback.PerformCallback(selectedValue);
+    }
+}
 
-1. **更简洁的界面集成**：
-   - 下拉选单和按钮直接集成在 GridView 的工具栏中
-   - 更符合 DevExpress 的设计风格和用户体验
+function SaveToDatabase() {
+    // 调用服务器端保存方法
+    saveCallback.PerformCallback();
+}
+```
 
-2. **更清晰的功能划分**：
-   - 所有与数据网格相关的功能都集中在 GridView 及其工具栏中
-   - 操作按钮和数据显示之间的关系更加明确
+## C# 后台代码
 
-3. **命令按钮的统一管理**：
-   - 通过 SettingsCommandButton 可以统一设置命令按钮的文本和样式
-   - 标准操作（如新增、编辑、删除）使用内置的命令系统
+现在在 CS 文件中实现相应的后台功能：​​​​​​​​​​​​​​​​
 
-4. **更好的响应式支持**：
-   - GridViewToolbar 可以根据屏幕尺寸自动调整
-   - 更好地支持不同设备的显示效果
+## 完整的解决方案说明
 
-这种实现方式的工作流程：
+我上面提供的代码实现了你所需的全部功能：
 
-1. 页面加载时，从 Oracle 数据库加载下拉选单选项
-2. 用户从下拉选单选择一个值，然后点击"查询"按钮
-3. 系统检查该值是否已经加载过，如果没有，则从数据库查询对应数据
-4. 查询结果显示在 GridView 中，用户可以进行编辑
-5. 用户可以点击"保存到数据库"按钮，将当前 GridView 中的所有数据保存到数据库
-6. 保存过程中会自动判断是插入新记录还是更新现有记录
+1. **工具栏上的下拉式选单**：
+   - 从 Oracle 表中获取数据并填充到下拉菜单中
+   - 使用 ASPxComboBox 作为工具栏中的项目
 
-使用说明：
+2. **获取数据按钮**：
+   - 根据下拉菜单的选择从第二个表获取关联数据
+   - 将这些数据显示在 GridView 中
 
-1. 将提供的代码添加到您的项目中
-2. 根据您实际的表结构和字段名称修改 SQL 查询语句
-3. 根据实际需要调整 GridView 的列定义
-4. 在 Web.config 中配置 Oracle 连接字符串（与前一个示例相同）
+3. **数据处理功能**：
+   - 避免重复载入相同数据
+   - 实现内联编辑模式（Inline Edit Mode）
+   - 使用 GridViewToolbarItem 添加工具栏项
 
-这个实现满足了您所有的需求，并且使用了 GridViewToolbar 的方式，使界面更加简洁、功能更加集中。如果您需要进一步调整或有任何问题，请随时告诉我。​​​​​​​​​​​​​​​​
+4. **额外功能**：
+   - 加入数据库 Insert（写入 Oracle）功能
+   - 加入 Save 按钮和编辑功能
+   - 避免重复载入相同数据的逻辑
+
+## 使用说明
+
+1. 将 ASPX 代码放入你的页面文件中
+2. 将 C# 代码整合到你的代码后台文件中
+3. 根据你的实际环境修改以下部分：
+   - Oracle 连接字符串
+   - 表名（YOUR_SOURCE_TABLE、YOUR_TARGET_TABLE）
+   - 字段名（根据实际情况修改）
+
+## 注意事项
+
+1. 代码中使用了 Session 来保存 GridView 的数据状态，这样可以避免重复加载数据，你也可以根据实际需求调整为其他状态管理方式。
+
+2. 数据保存功能使用了事务处理，确保数据完整性。
+
+3. 需要根据你的实际表结构调整查询语句和字段映射。
+
+4. 如果你的 GridView 需要更复杂的编辑功能，可以进一步扩展事件处理程序。
+
+这个实现方案符合你的要求，使用 DevExpress 19.2 在 .NET 4.6.2 环境中创建带下拉式选单的工具栏，并实现了所有你要求的额外功能。​​​​​​​​​​​​​​​​
