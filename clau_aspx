@@ -1,89 +1,92 @@
-<dx:ASPxGridView ID="gridFrequency" runat="server" AutoGenerateColumns="False" KeyFieldName="ID"
-    OnRowInserting="gridFrequency_RowInserting" OnRowUpdating="gridFrequency_RowUpdating"
-    OnInit="gridFrequency_Init" OnCustomCallback="gridFrequency_CustomCallback"
-    ClientInstanceName="gridFrequency" Width="100%">
-    <SettingsEditing Mode="Inline" />
-    <SettingsBehavior ConfirmDelete="true" />
-    <Columns>
-        <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" ShowNewButtonInHeader="true" />
-        <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" Visible="false" />
-        
-        <!-- 頻率欄位 -->
-        <dx:GridViewDataColumn FieldName="FREQUENCY" Caption="頻率設定">
-            <DataItemTemplate>
-                <%# FormatFrequencyDisplay(Eval("FREQUENCY")) %>
-            </DataItemTemplate>
-            <EditItemTemplate>
-                <table>
-                    <tr>
-                        <td>
-                            每
-                            <dx:ASPxSpinEdit ID="txtFreqCount" runat="server" 
-                                Value='<%# GetFreqValue(Eval("FREQUENCY")) %>' 
-                                MinValue="1" Width="60px" ClientInstanceName="txtFreqCount">
-                                <ClientSideEvents Init="function(s, e) { txtFreqCountInstance = s; }" />
-                            </dx:ASPxSpinEdit>
-                            次：
-                        </td>
-                        <td>
-                            <dx:ASPxSpinEdit ID="txtFreqUnitCount" runat="server" 
-                                Value='<%# GetFreqUnitCountValue(Eval("FREQUENCY")) %>' 
-                                MinValue="1" Width="60px" ClientInstanceName="txtFreqUnitCount">
-                                <ClientSideEvents Init="function(s, e) { txtFreqUnitCountInstance = s; }" />
-                            </dx:ASPxSpinEdit>
-                        </td>
-                        <td>
-                            <dx:ASPxComboBox ID="cmbFreqUnit" runat="server" 
-                                Value='<%# GetFreqUnitValue(Eval("FREQUENCY")) %>' 
-                                Width="60px" ClientInstanceName="cmbFreqUnit">
-                                <ClientSideEvents Init="function(s, e) { cmbFreqUnitInstance = s; }" />
-                                <Items>
-                                    <dx:ListEditItem Text="天" Value="D" />
-                                    <dx:ListEditItem Text="週" Value="W" />
-                                </Items>
-                            </dx:ASPxComboBox>
-                        </td>
-                    </tr>
-                </table>
-                <!-- 隱藏欄位存儲組合後的值 -->
-                <dx:ASPxHiddenField ID="hfCombinedFrequency" runat="server" ClientInstanceName="hfCombinedFrequency">
-                </dx:ASPxHiddenField>
-            </EditItemTemplate>
-        </dx:GridViewDataColumn>
-        
-        <!-- 其他欄位... -->
-    </Columns>
-    <Toolbars>
-        <dx:GridViewToolbar>
-            <Items>
-                <dx:GridViewToolbarItem Command="New" Text="新增" />
-            </Items>
-        </dx:GridViewToolbar>
-    </Toolbars>
-    <ClientSideEvents BeforePerformDataInsert="function(s, e) { return CombineFrequencyValues(); }"
-                       BeforePerformDataUpdate="function(s, e) { return CombineFrequencyValues(); }" />
-</dx:ASPxGridView>
+```csharp
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="YourPage.aspx.cs" Inherits="YourNamespace.YourPage" %>
 
-<!-- JavaScript 函數 -->
-<script type="text/javascript">
-    var txtFreqCountInstance, txtFreqUnitCountInstance, cmbFreqUnitInstance;
-    
-    function CombineFrequencyValues() {
-        if (!txtFreqCountInstance || !txtFreqUnitCountInstance || !cmbFreqUnitInstance) 
-            return true;
+<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" 
+    Namespace="DevExpress.Web" TagPrefix="dx" %>
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>数据管理页面</title>
+</head>
+<body>
+    <form id="form1" runat="server">
+        <div>
+            <dx:ASPxToolbar ID="ASPxToolbar1" runat="server" Width="100%">
+                <Items>
+                    <!-- 下拉选单 -->
+                    <dx:ToolbarComboBoxItem Name="cmbItems" Caption="选择项目:" CaptionPosition="Left">
+                        <ComboBoxProperties ValueField="ValueField" TextField="TextField" 
+                            ValueType="System.String" DropDownStyle="DropDownList">
+                        </ComboBoxProperties>
+                    </dx:ToolbarComboBoxItem>
+                    
+                    <!-- 查询按钮 -->
+                    <dx:ToolbarButtonItem Name="btnQuery" Text="查询" 
+                        BeginGroup="true" ItemStyle-CssClass="buttonStyle">
+                        <ClientSideEvents Click="function(s, e) { OnQueryButtonClick(); }" />
+                    </dx:ToolbarButtonItem>
+                    
+                    <!-- 保存按钮 -->
+                    <dx:ToolbarButtonItem Name="btnSave" Text="保存" BeginGroup="true">
+                        <ClientSideEvents Click="function(s, e) { gridView.UpdateEdit(); }" />
+                    </dx:ToolbarButtonItem>
+                </Items>
+            </dx:ASPxToolbar>
             
-        var freqCount = txtFreqCountInstance.GetValue() || 1;
-        var unitCount = txtFreqUnitCountInstance.GetValue() || 1;
-        var unit = cmbFreqUnitInstance.GetValue() || 'D';
+            <!-- GridView 控件 -->
+            <dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ID" Width="100%" 
+                OnRowInserting="gridView_RowInserting"
+                OnRowUpdating="gridView_RowUpdating"
+                ClientInstanceName="gridView">
+                <SettingsEditing Mode="Inline" />
+                <SettingsBehavior AllowFocusedRow="true" />
+                <Columns>
+                    <!-- 这里将根据您的表字段添加列 -->
+                    <!-- 示例: -->
+                    <dx:GridViewCommandColumn ShowEditButton="true" ShowNewButtonInHeader="true" VisibleIndex="0" Width="100px" />
+                    <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" VisibleIndex="1">
+                        <EditFormSettings Visible="False" />
+                    </dx:GridViewDataTextColumn>
+                    <dx:GridViewDataTextColumn FieldName="Field1" VisibleIndex="2" />
+                    <dx:GridViewDataTextColumn FieldName="Field2" VisibleIndex="3" />
+                    <!-- 添加您需要的其他列 -->
+                </Columns>
+                <SettingsPager PageSize="10" />
+                <ClientSideEvents EndCallback="OnGridEndCallback" />
+            </dx:ASPxGridView>
+            
+            <dx:ASPxCallback ID="callbackQuery" runat="server" OnCallback="callbackQuery_Callback" 
+                ClientInstanceName="callbackQuery">
+                <ClientSideEvents CallbackComplete="OnQueryCallbackComplete" />
+            </dx:ASPxCallback>
+        </div>
+    </form>
+    
+    <script type="text/javascript">
+        function OnQueryButtonClick() {
+            var selectedValue = ASPxToolbar1.GetItem("cmbItems").GetComboBox().GetValue();
+            if (selectedValue) {
+                callbackQuery.PerformCallback(selectedValue);
+            } else {
+                alert("请先选择一个项目");
+            }
+        }
         
-        var combinedValue = freqCount + '/' + unitCount + unit;
+        function OnQueryCallbackComplete(s, e) {
+            if (e.result === "success") {
+                gridView.PerformCallback();
+            } else if (e.result === "duplicate") {
+                alert("数据已存在，避免重复加载");
+            } else if (e.result === "error") {
+                alert("查询数据时发生错误");
+            }
+        }
         
-        // Store the value in a hidden field or callback
-        ASPxClientGridView.Cast(gridFrequency).GetEditingRowValues('FREQUENCY', function(values) {
-            // Using a custom callback to send this value to server
-            gridFrequency.PerformCallback('SETFREQUENCY|' + combinedValue);
-        });
-        
-        return true;
-    }
-</script>
+        function OnGridEndCallback(s, e) {
+            // 可以在这里处理网格回调完成后的逻辑
+        }
+    </script>
+</body>
+</html>
