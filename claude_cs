@@ -1,136 +1,331 @@
-// 用於儲存臨時組合的頻率值
-private string _tempCombinedFrequency;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Web.UI;
+using DevExpress.Web;
+using Oracle.ManagedDataAccess.Client;
+using System.Configuration;
+using System.Linq;
 
-protected void gridFrequency_Init(object sender, EventArgs e)
+namespace YourNamespace
 {
-    // 初始化暫存值
-    _tempCombinedFrequency = "1/1D";
-}
-
-protected void gridFrequency_CustomCallback(object sender, ASPxGridViewCustomCallbackEventArgs e)
-{
-    // 處理自定義回調
-    string[] parameters = e.Parameters.Split('|');
-    if (parameters.Length >= 2 && parameters[0] == "SETFREQUENCY")
+    public partial class YourPage : System.Web.UI.Page
     {
-        _tempCombinedFrequency = parameters[1];
-    }
-}
-
-protected void gridFrequency_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-{
-    try
-    {
-        // 使用暫存的組合頻率值
-        string frequency = _tempCombinedFrequency;
+        // 获取 Oracle 连接字符串
+        private string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
         
-        // 如果暫存值是空的，嘗試從插入值中構建頻率
-        if (string.IsNullOrEmpty(frequency) || frequency == "1/1D")
+        // 已加载的数据 ID 列表，用于避免重复加载
+        private List<string> loadedDataIds
         {
-            // 嘗試取得每個控件的值 (通常這裡是取不到的，所以我們使用前面暫存的值)
+            get
+            {
+                if (Session["LoadedDataIds"] == null)
+                    Session["LoadedDataIds"] = new List<string>();
+                return (List<string>)Session["LoadedDataIds"];
+            }
+            set
+            {
+                Session["LoadedDataIds"] = value;
+            }
+        }
+
+        protected void Page_Load(object sender, EventArgs e)
+        {
+            if (!IsPostBack)
+            {
+                // 初始化下拉选单数据
+                LoadComboBoxData();
+                
+                // 初始化 GridView (如果需要)
+                LoadGridViewData();
+            }
+        }
+
+        /// <summary>
+        /// 加载下拉选单数据
+        /// </summary>
+        private void LoadComboBoxData()
+        {
             try
             {
-                ASPxGridView grid = sender as ASPxGridView;
-                GridViewEditFormTemplateContainer container = grid.FindEditFormTemplateContainer();
-                
-                if (container != null)
+                using (OracleConnection conn = new OracleConnection(connectionString))
                 {
-                    ASPxSpinEdit txtFreqCount = container.FindControl("txtFreqCount") as ASPxSpinEdit;
-                    ASPxSpinEdit txtFreqUnitCount = container.FindControl("txtFreqUnitCount") as ASPxSpinEdit;
-                    ASPxComboBox cmbFreqUnit = container.FindControl("cmbFreqUnit") as ASPxComboBox;
+                    conn.Open();
                     
-                    if (txtFreqCount != null && txtFreqUnitCount != null && cmbFreqUnit != null)
+                    // 替换为实际的表名和字段名
+                    string sql = "SELECT ID, NAME FROM YOUR_TABLE_NAME ORDER BY NAME";
+                    
+                    using (OracleCommand cmd = new OracleCommand(sql, conn))
                     {
-                        int freqCount = Convert.ToInt32(txtFreqCount.Value);
-                        int unitCount = Convert.ToInt32(txtFreqUnitCount.Value);
-                        string unit = cmbFreqUnit.Value.ToString();
+                        DataTable dt = new DataTable();
+                        using (OracleDataAdapter adapter = new OracleDataAdapter(cmd))
+                        {
+                            adapter.Fill(dt);
+                        }
                         
-                        frequency = string.Format("{0}/{1}{2}", freqCount, unitCount, unit);
+                        // 绑定下拉选单数据
+                        ASPxComboBox comboBox = ((ToolbarComboBoxItem)ASPxToolbar1.Items.FindByName("cmbItems")).ComboBox;
+                        comboBox.DataSource = dt;
+                        comboBox.ValueField = "ID";
+                        comboBox.TextField = "NAME";
+                        comboBox.DataBind();
                     }
                 }
             }
             catch (Exception ex)
             {
-                // 記錄錯誤但繼續使用前面暫存的值
-                System.Diagnostics.Debug.WriteLine($"無法從編輯模板獲取控件值: {ex.Message}");
+                // 处理异常
+                ScriptManager.RegisterStartupScript(this, GetType(), "ErrorAlert", 
+                    $"alert('加载下拉选单数据时发生错误: {ex.Message}');", true);
             }
         }
-        
-        // 將組合後的頻率值加入到e.NewValues中
-        e.NewValues["FREQUENCY"] = frequency;
-        
-        // 執行插入操作
-        using (SqlConnection conn = new SqlConnection(GetConnectionString()))
-        {
-            conn.Open();
-            using (SqlCommand cmd = new SqlCommand())
-            {
-                cmd.Connection = conn;
-                cmd.CommandType = CommandType.Text;
-                cmd.CommandText = "INSERT INTO YourTable (FREQUENCY) VALUES (@FREQUENCY)";
-                
-                cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
-                
-                cmd.ExecuteNonQuery();
-            }
-        }
-        
-        // 重置暫存值
-        _tempCombinedFrequency = "1/1D";
-        
-        // 取消 GridView 默認的插入操作，因為我們已經手動處理了
-        e.Cancel = true;
-        
-        // 重新綁定網格以顯示新數據
-        BindGrid();
-    }
-    catch (Exception ex)
-    {
-        ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
-            $"alert('插入數據時發生錯誤: {ex.Message.Replace("'", "\\'")}');", true);
-        e.Cancel = true;
-    }
-}
 
-protected void gridFrequency_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
-{
-    try
-    {
-        // 使用與插入類似的邏輯，利用暫存的頻率值
-        string frequency = _tempCombinedFrequency;
-        
-        // 也可以嘗試從 UpdateValues 中獲取值，與上面插入方法類似
-        
-        // 執行更新操作
-        using (SqlConnection conn = new SqlConnection(GetConnectionString()))
+        /// <summary>
+        /// 加载 GridView 数据
+        /// </summary>
+        private void LoadGridViewData()
         {
-            conn.Open();
-            using (SqlCommand cmd = new SqlCommand())
+            DataTable dt = Session["GridViewData"] as DataTable;
+            if (dt == null)
             {
-                cmd.Connection = conn;
-                cmd.CommandType = CommandType.Text;
-                cmd.CommandText = "UPDATE YourTable SET FREQUENCY = @FREQUENCY WHERE ID = @ID";
+                dt = CreateEmptyDataTable();
+                Session["GridViewData"] = dt;
+            }
+            
+            gridView.DataSource = dt;
+            gridView.DataBind();
+        }
+
+        /// <summary>
+        /// 创建空的数据表结构
+        /// </summary>
+        private DataTable CreateEmptyDataTable()
+        {
+            DataTable dt = new DataTable();
+            
+            // 添加列定义 (根据实际需要修改)
+            dt.Columns.Add("ID", typeof(string));
+            dt.Columns.Add("Field1", typeof(string));
+            dt.Columns.Add("Field2", typeof(string));
+            // 添加其他需要的列...
+            
+            return dt;
+        }
+
+        /// <summary>
+        /// 查询按钮回调处理
+        /// </summary>
+        protected void callbackQuery_Callback(object source, DevExpress.Web.CallbackEventArgs e)
+        {
+            string selectedValue = e.Parameter;
+            
+            // 检查是否已加载相同数据
+            if (loadedDataIds.Contains(selectedValue))
+            {
+                e.Result = "duplicate";
+                return;
+            }
+            
+            try
+            {
+                // 查询选中值对应的数据
+                DataTable queryResult = QueryDataBySelectedValue(selectedValue);
                 
-                cmd.Parameters.AddWithValue("@FREQUENCY", frequency);
-                cmd.Parameters.AddWithValue("@ID", e.Keys["ID"]);
-                
-                cmd.ExecuteNonQuery();
+                if (queryResult != null && queryResult.Rows.Count > 0)
+                {
+                    // 获取当前 GridView 数据
+                    DataTable currentData = Session["GridViewData"] as DataTable;
+                    if (currentData == null)
+                    {
+                        currentData = CreateEmptyDataTable();
+                    }
+                    
+                    // 将查询结果添加到当前数据中
+                    foreach (DataRow row in queryResult.Rows)
+                    {
+                        DataRow newRow = currentData.NewRow();
+                        foreach (DataColumn col in queryResult.Columns)
+                        {
+                            if (currentData.Columns.Contains(col.ColumnName))
+                            {
+                                newRow[col.ColumnName] = row[col.ColumnName];
+                            }
+                        }
+                        currentData.Rows.Add(newRow);
+                    }
+                    
+                    // 更新 Session 中的数据
+                    Session["GridViewData"] = currentData;
+                    
+                    // 添加到已加载数据列表
+                    loadedDataIds.Add(selectedValue);
+                    
+                    e.Result = "success";
+                }
+                else
+                {
+                    e.Result = "error";
+                }
+            }
+            catch (Exception ex)
+            {
+                // 处理异常
+                e.Result = "error";
+                ScriptManager.RegisterStartupScript(this, GetType(), "ErrorAlert", 
+                    $"alert('查询数据时发生错误: {ex.Message}');", true);
             }
         }
-        
-        // 重置暫存值
-        _tempCombinedFrequency = "1/1D";
-        
-        // 取消 GridView 默認的更新操作
-        e.Cancel = true;
-        
-        // 重新綁定網格
-        BindGrid();
-    }
-    catch (Exception ex)
-    {
-        ScriptManager.RegisterClientScriptBlock(this, this.GetType(), "alertMessage", 
-            $"alert('更新數據時發生錯誤: {ex.Message.Replace("'", "\\'")}');", true);
-        e.Cancel = true;
+
+        /// <summary>
+        /// 根据选中值查询数据
+        /// </summary>
+        private DataTable QueryDataBySelectedValue(string selectedValue)
+        {
+            DataTable dt = new DataTable();
+            
+            try
+            {
+                using (OracleConnection conn = new OracleConnection(connectionString))
+                {
+                    conn.Open();
+                    
+                    // 替换为实际的表名和字段名
+                    string sql = "SELECT * FROM YOUR_SECOND_TABLE WHERE REFERENCE_ID = :SelectedValue";
+                    
+                    using (OracleCommand cmd = new OracleCommand(sql, conn))
+                    {
+                        cmd.Parameters.Add(new OracleParameter("SelectedValue", selectedValue));
+                        
+                        using (OracleDataAdapter adapter = new OracleDataAdapter(cmd))
+                        {
+                            adapter.Fill(dt);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // 处理异常
+                throw new Exception($"查询数据失败: {ex.Message}", ex);
+            }
+            
+            return dt;
+        }
+
+        /// <summary>
+        /// GridView 行插入事件
+        /// </summary>
+        protected void gridView_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+        {
+            try
+            {
+                // 插入数据到 Oracle 数据库
+                using (OracleConnection conn = new OracleConnection(connectionString))
+                {
+                    conn.Open();
+                    
+                    // 构建 INSERT SQL 语句 (根据实际字段调整)
+                    string sql = @"INSERT INTO YOUR_TARGET_TABLE 
+                                  (ID, FIELD1, FIELD2) 
+                                  VALUES 
+                                  (:ID, :Field1, :Field2)";
+                    
+                    using (OracleCommand cmd = new OracleCommand(sql, conn))
+                    {
+                        // 添加参数 (根据实际字段调整)
+                        cmd.Parameters.Add(new OracleParameter("ID", Guid.NewGuid().ToString())); // 或其他 ID 生成逻辑
+                        cmd.Parameters.Add(new OracleParameter("Field1", e.NewValues["Field1"]));
+                        cmd.Parameters.Add(new OracleParameter("Field2", e.NewValues["Field2"]));
+                        
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+                
+                // 添加到当前 GridView 数据
+                DataTable currentData = Session["GridViewData"] as DataTable;
+                DataRow newRow = currentData.NewRow();
+                
+                // 设置值 (根据实际字段调整)
+                newRow["ID"] = Guid.NewGuid().ToString(); // 或其他 ID 生成逻辑
+                newRow["Field1"] = e.NewValues["Field1"];
+                newRow["Field2"] = e.NewValues["Field2"];
+                
+                currentData.Rows.Add(newRow);
+                Session["GridViewData"] = currentData;
+                
+                gridView.CancelEdit();
+                e.Cancel = true;
+                
+                // 重新绑定数据
+                gridView.DataSource = currentData;
+                gridView.DataBind();
+            }
+            catch (Exception ex)
+            {
+                // 处理异常
+                ScriptManager.RegisterStartupScript(this, GetType(), "ErrorAlert", 
+                    $"alert('插入数据时发生错误: {ex.Message}');", true);
+                e.Cancel = true;
+            }
+        }
+
+        /// <summary>
+        /// GridView 行更新事件
+        /// </summary>
+        protected void gridView_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+        {
+            try
+            {
+                // 更新 Oracle 数据库中的数据
+                using (OracleConnection conn = new OracleConnection(connectionString))
+                {
+                    conn.Open();
+                    
+                    // 构建 UPDATE SQL 语句 (根据实际字段调整)
+                    string sql = @"UPDATE YOUR_TARGET_TABLE 
+                                  SET FIELD1 = :Field1, FIELD2 = :Field2
+                                  WHERE ID = :ID";
+                    
+                    using (OracleCommand cmd = new OracleCommand(sql, conn))
+                    {
+                        // 添加参数 (根据实际字段调整)
+                        cmd.Parameters.Add(new OracleParameter("Field1", e.NewValues["Field1"]));
+                        cmd.Parameters.Add(new OracleParameter("Field2", e.NewValues["Field2"]));
+                        cmd.Parameters.Add(new OracleParameter("ID", e.Keys["ID"]));
+                        
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+                
+                // 更新当前 GridView 数据
+                DataTable currentData = Session["GridViewData"] as DataTable;
+                string id = e.Keys["ID"].ToString();
+                
+                DataRow[] rows = currentData.Select($"ID = '{id}'");
+                if (rows.Length > 0)
+                {
+                    // 更新值 (根据实际字段调整)
+                    rows[0]["Field1"] = e.NewValues["Field1"];
+                    rows[0]["Field2"] = e.NewValues["Field2"];
+                    
+                    currentData.AcceptChanges();
+                    Session["GridViewData"] = currentData;
+                }
+                
+                gridView.CancelEdit();
+                e.Cancel = true;
+                
+                // 重新绑定数据
+                gridView.DataSource = currentData;
+                gridView.DataBind();
+            }
+            catch (Exception ex)
+            {
+                // 处理异常
+                ScriptManager.RegisterStartupScript(this, GetType(), "ErrorAlert", 
+                    $"alert('更新数据时发生错误: {ex.Message}');", true);
+                e.Cancel = true;
+            }
+        }
     }
 }
