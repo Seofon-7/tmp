@@ -13,35 +13,34 @@
 <body>
     <form id="form1" runat="server">
         <div>
-            <dx:ASPxToolbar ID="ASPxToolbar1" runat="server" Width="100%">
-                <Items>
-                    <dx:BarEditItem Name="cboItems" Caption="选择项目:">
-                        <EditSettings>
-                            <dx:ASPxComboBox ID="cboOracleItems" runat="server" ValueType="System.String" 
-                                DataSourceID="dsOracleItems" TextField="ITEM_NAME" ValueField="ITEM_ID"
-                                OnSelectedIndexChanged="cboOracleItems_SelectedIndexChanged" 
-                                AutoPostBack="false">
-                            </dx:ASPxComboBox>
-                        </EditSettings>
-                    </dx:BarEditItem>
-                    <dx:BarButtonItem Name="btnLoadData" Caption="加载数据" 
-                        ClientEnabled="true" 
-                        OnClick="btnLoadData_Click">
-                    </dx:BarButtonItem>
-                    <dx:BarButtonItem Name="btnSave" Caption="保存" 
-                        ClientEnabled="true" 
-                        OnClick="btnSave_Click">
-                    </dx:BarButtonItem>
-                </Items>
-            </dx:ASPxToolbar>
-            
             <dx:ASPxGridView ID="gridData" runat="server" KeyFieldName="ID" Width="100%" 
                 OnRowInserting="gridData_RowInserting"
-                OnRowUpdating="gridData_RowUpdating">
+                OnRowUpdating="gridData_RowUpdating"
+                OnToolbarItemClick="gridData_ToolbarItemClick">
                 <SettingsEditing Mode="Inline" />
                 <SettingsBehavior AllowFocusedRow="true" />
+                
+                <Toolbars>
+                    <dx:GridViewToolbar>
+                        <Items>
+                            <dx:GridViewToolbarItem Name="ItemSelector" BeginGroup="true">
+                                <Template>
+                                    <dx:ASPxLabel ID="lblItems" runat="server" Text="选择项目:" />
+                                    <dx:ASPxComboBox ID="cboOracleItems" runat="server" Width="200px" 
+                                        DataSourceID="dsOracleItems" TextField="ITEM_NAME" ValueField="ITEM_ID" 
+                                        ClientInstanceName="cboOracleItems" AutoPostBack="false">
+                                    </dx:ASPxComboBox>
+                                </Template>
+                            </dx:GridViewToolbarItem>
+                            <dx:GridViewToolbarItem Name="LoadData" Text="加载数据" BeginGroup="true" />
+                            <dx:GridViewToolbarItem Name="SaveData" Text="保存到数据库" BeginGroup="true" />
+                            <dx:GridViewToolbarItem Command="New" Text="新增行" BeginGroup="true" />
+                        </Items>
+                    </dx:GridViewToolbar>
+                </Toolbars>
+                
                 <Columns>
-                    <!-- 您需要根据实际表结构定义列 -->
+                    <!-- 根据实际表结构定义列 -->
                     <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" VisibleIndex="0">
                         <EditFormSettings Visible="False" />
                     </dx:GridViewDataTextColumn>
@@ -51,11 +50,12 @@
                     </dx:GridViewDataTextColumn>
                     <dx:GridViewDataTextColumn FieldName="FIELD3" Caption="字段3" VisibleIndex="3">
                     </dx:GridViewDataTextColumn>
-                    <dx:GridViewCommandColumn ShowEditButton="true" ShowNewButton="true" VisibleIndex="4">
+                    <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" VisibleIndex="4">
                     </dx:GridViewCommandColumn>
                 </Columns>
                 <Settings ShowFilterRow="true" ShowGroupPanel="true" />
                 <SettingsSearchPanel Visible="true" />
+                <SettingsText CommandNew="新增" />
             </dx:ASPxGridView>
 
             <asp:SqlDataSource ID="dsOracleItems" runat="server" 
@@ -74,6 +74,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Configuration;
 using System.Web.UI;
+using System.Web.UI.WebControls;
 using Oracle.ManagedDataAccess.Client;
 using DevExpress.Web;
 
@@ -124,10 +125,22 @@ namespace YourNamespace
             Session["GridData"] = dt;
         }
 
-        protected void btnLoadData_Click(object sender, EventArgs e)
+        protected void gridData_ToolbarItemClick(object sender, DevExpress.Web.Data.ASPxGridViewToolbarItemClickEventArgs e)
         {
-            // 获取选中的项目ID
-            ASPxComboBox comboBox = ASPxToolbar1.FindEditItemByName("cboItems").FindControl("cboOracleItems") as ASPxComboBox;
+            if (e.Item.Name == "LoadData")
+            {
+                LoadDataFromOracle();
+            }
+            else if (e.Item.Name == "SaveData")
+            {
+                SaveDataToOracle();
+            }
+        }
+        
+        private void LoadDataFromOracle()
+        {
+            // 获取GridView工具栏中的ComboBox
+            ASPxComboBox comboBox = gridData.FindToolbarTemplateControl("ItemSelector", "cboOracleItems") as ASPxComboBox;
             if (comboBox == null || string.IsNullOrEmpty(comboBox.Value?.ToString()))
             {
                 ShowMessage("请先选择一个项目");
@@ -221,7 +234,7 @@ namespace YourNamespace
             return dt;
         }
 
-        protected void btnSave_Click(object sender, EventArgs e)
+        private void SaveDataToOracle()
         {
             // 获取当前GridView的数据
             DataTable currentData = Session["GridData"] as DataTable;
@@ -232,7 +245,7 @@ namespace YourNamespace
             }
 
             // 保存数据到Oracle
-            if (SaveDataToOracle(currentData))
+            if (SaveDataTableToOracle(currentData))
             {
                 ShowMessage("数据已成功保存到数据库");
             }
@@ -242,7 +255,7 @@ namespace YourNamespace
             }
         }
 
-        private bool SaveDataToOracle(DataTable dt)
+        private bool SaveDataTableToOracle(DataTable dt)
         {
             bool success = true;
             string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
@@ -268,9 +281,9 @@ namespace YourNamespace
                                 cmd.CommandText = "INSERT INTO YOUR_DATA_TABLE (ID, FIELD1, FIELD2, FIELD3) VALUES (:ID, :FIELD1, :FIELD2, :FIELD3)";
                                 
                                 cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = row["ID"].ToString();
-                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"].ToString();
-                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"].ToString();
-                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"] != DBNull.Value ? row["FIELD1"].ToString() : null;
+                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"] != DBNull.Value ? row["FIELD2"].ToString() : null;
+                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"] != DBNull.Value ? row["FIELD3"].ToString() : null;
                                 
                                 cmd.ExecuteNonQuery();
                             }
@@ -283,9 +296,9 @@ namespace YourNamespace
                                 cmd.Connection = conn;
                                 cmd.CommandText = "UPDATE YOUR_DATA_TABLE SET FIELD1 = :FIELD1, FIELD2 = :FIELD2, FIELD3 = :FIELD3 WHERE ID = :ID";
                                 
-                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"].ToString();
-                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"].ToString();
-                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"].ToString();
+                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"] != DBNull.Value ? row["FIELD1"].ToString() : null;
+                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"] != DBNull.Value ? row["FIELD2"].ToString() : null;
+                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"] != DBNull.Value ? row["FIELD3"].ToString() : null;
                                 cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = row["ID"].ToString();
                                 
                                 cmd.ExecuteNonQuery();
@@ -374,11 +387,6 @@ namespace YourNamespace
         {
             // 显示消息给用户
             ScriptManager.RegisterStartupScript(this, GetType(), "alert", $"alert('{message}');", true);
-        }
-
-        protected void cboOracleItems_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            // 可以在这里处理下拉框选择变化的事件
         }
     }
 }
