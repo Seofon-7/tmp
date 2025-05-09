@@ -1,407 +1,83 @@
-// ASPX页面代码
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="OracleDataPage.aspx.cs" Inherits="YourNamespace.OracleDataPage" %>
+很好，你的狀況代表你使用的 ASPxGridView.Toolbars[0].Items[0] 是 非 Template 類型的 ToolbarItem，但你在 ASPX 中已經用了 <Template> 包住 ASPxComboBox，這表示你其實是用了 Template ToolbarItem，但在後端嘗試用錯方式存取。
 
-<%@ Register Assembly="DevExpress.Web.v19.2, Version=19.2.0.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a" 
-    Namespace="DevExpress.Web" TagPrefix="dx" %>
+下面是你該怎麼做的正確方式：
 
-<!DOCTYPE html>
+⸻
 
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head runat="server">
-    <title>Oracle数据加载示例</title>
-</head>
-<body>
-    <form id="form1" runat="server">
-        <div>
-            <dx:ASPxGridView ID="gridData" runat="server" KeyFieldName="ID" Width="100%" 
-                OnRowInserting="gridData_RowInserting"
-                OnRowUpdating="gridData_RowUpdating"
-                OnToolbarItemClick="gridData_ToolbarItemClick">
-                <SettingsEditing Mode="Inline" />
-                <SettingsBehavior AllowFocusedRow="true" />
-                
-                <Toolbars>
-                    <dx:GridViewToolbar>
-                        <Items>
-                            <dx:GridViewToolbarItem Name="ItemSelector" BeginGroup="true">
-                                <Template>
-                                    <dx:ASPxLabel ID="lblItems" runat="server" Text="选择项目:" />
-                                    <dx:ASPxComboBox ID="cboOracleItems" runat="server" Width="200px" 
-                                        DataSourceID="dsOracleItems" TextField="ITEM_NAME" ValueField="ITEM_ID" 
-                                        ClientInstanceName="cboOracleItems" AutoPostBack="false">
-                                    </dx:ASPxComboBox>
-                                </Template>
-                            </dx:GridViewToolbarItem>
-                            <dx:GridViewToolbarItem Name="LoadData" Text="加载数据" BeginGroup="true" />
-                            <dx:GridViewToolbarItem Name="SaveData" Text="保存到数据库" BeginGroup="true" />
-                            <dx:GridViewToolbarItem Command="New" Text="新增行" BeginGroup="true" />
-                        </Items>
-                    </dx:GridViewToolbar>
-                </Toolbars>
-                
-                <Columns>
-                    <!-- 根据实际表结构定义列 -->
-                    <dx:GridViewDataTextColumn FieldName="ID" ReadOnly="true" VisibleIndex="0">
-                        <EditFormSettings Visible="False" />
-                    </dx:GridViewDataTextColumn>
-                    <dx:GridViewDataTextColumn FieldName="FIELD1" Caption="字段1" VisibleIndex="1">
-                    </dx:GridViewDataTextColumn>
-                    <dx:GridViewDataTextColumn FieldName="FIELD2" Caption="字段2" VisibleIndex="2">
-                    </dx:GridViewDataTextColumn>
-                    <dx:GridViewDataTextColumn FieldName="FIELD3" Caption="字段3" VisibleIndex="3">
-                    </dx:GridViewDataTextColumn>
-                    <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" VisibleIndex="4">
-                    </dx:GridViewCommandColumn>
-                </Columns>
-                <Settings ShowFilterRow="true" ShowGroupPanel="true" />
-                <SettingsSearchPanel Visible="true" />
-                <SettingsText CommandNew="新增" />
-            </dx:ASPxGridView>
+完整作法：用 ASPxGridView.FindControl 找 ComboBox
 
-            <asp:SqlDataSource ID="dsOracleItems" runat="server" 
-                ProviderName="System.Data.OracleClient"
-                ConnectionString="<%$ ConnectionStrings:OracleConnection %>" 
-                SelectCommand="SELECT ITEM_ID, ITEM_NAME FROM YOUR_ITEM_TABLE ORDER BY ITEM_NAME">
-            </asp:SqlDataSource>
-        </div>
-    </form>
-</body>
-</html>
+既然你在 Toolbar 中加的是 <Template>，那 ASPxComboBox 會在 GridView 的控制項樹下，你可以用：
 
-// C#后台代码 (OracleDataPage.aspx.cs)
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Configuration;
-using System.Web.UI;
-using System.Web.UI.WebControls;
-using Oracle.ManagedDataAccess.Client;
-using DevExpress.Web;
+var combo = ASPxGridView1.FindControl("ddlOracleData") as ASPxComboBox;
 
-namespace YourNamespace
+
+⸻
+
+最終建議範例
+
+ASPX：
+
+<dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False">
+    <Settings ShowToolbar="True" />
+    <Toolbars>
+        <dx:GridViewToolbar>
+            <Items>
+                <dx:GridViewToolbarItem>
+                    <Template>
+                        <dx:ASPxComboBox ID="ddlOracleData" runat="server"
+                                         Width="200px"
+                                         ValueField="ID"
+                                         TextField="NAME"
+                                         DropDownStyle="DropDownList" />
+                    </Template>
+                </dx:GridViewToolbarItem>
+            </Items>
+        </dx:GridViewToolbar>
+    </Toolbars>
+</dx:ASPxGridView>
+
+
+⸻
+
+C# (.aspx.cs)：
+
+protected void Page_Load(object sender, EventArgs e)
 {
-    public partial class OracleDataPage : System.Web.UI.Page
+    if (!IsPostBack)
     {
-        // 存储已加载的项目ID，用于避免重复加载
-        private List<string> loadedItems = new List<string>();
-        
-        protected void Page_Load(object sender, EventArgs e)
+        BindComboBoxFromOracle();
+    }
+}
+
+private void BindComboBoxFromOracle()
+{
+    ASPxComboBox combo = ASPxGridView1.FindControl("ddlOracleData") as ASPxComboBox;
+    if (combo == null)
+        return;
+
+    string connStr = "User Id=xxx;Password=xxx;Data Source=your_tns";
+    string sql = "SELECT id, name FROM sample_table ORDER BY name";
+
+    using (var conn = new OracleConnection(connStr))
+    using (var cmd = new OracleCommand(sql, conn))
+    {
+        conn.Open();
+        using (var reader = cmd.ExecuteReader())
         {
-            if (!IsPostBack)
-            {
-                // 初始化页面
-                InitializeGridView();
-                
-                // 如果Session中有存储的数据，恢复它
-                if (Session["GridData"] != null)
-                {
-                    gridData.DataSource = Session["GridData"];
-                    gridData.DataBind();
-                }
-                
-                // 恢复已加载项目列表
-                if (Session["LoadedItems"] != null)
-                {
-                    loadedItems = (List<string>)Session["LoadedItems"];
-                }
-            }
-        }
-
-        private void InitializeGridView()
-        {
-            // 创建DataTable并设置结构
-            DataTable dt = new DataTable();
-            dt.Columns.Add("ID", typeof(string));
-            dt.Columns.Add("FIELD1", typeof(string));
-            dt.Columns.Add("FIELD2", typeof(string));
-            dt.Columns.Add("FIELD3", typeof(string));
-            // 添加更多列...
-            
-            // 将DataTable绑定到GridView
-            gridData.DataSource = dt;
-            gridData.DataBind();
-            
-            // 保存到Session
-            Session["GridData"] = dt;
-        }
-
-        protected void gridData_ToolbarItemClick(object sender, DevExpress.Web.Data.ASPxGridViewToolbarItemClickEventArgs e)
-        {
-            if (e.Item.Name == "LoadData")
-            {
-                LoadDataFromOracle();
-            }
-            else if (e.Item.Name == "SaveData")
-            {
-                SaveDataToOracle();
-            }
-        }
-        
-        private void LoadDataFromOracle()
-        {
-            // 获取GridView工具栏中的ComboBox
-            ASPxComboBox comboBox = gridData.FindToolbarTemplateControl("ItemSelector", "cboOracleItems") as ASPxComboBox;
-            if (comboBox == null || string.IsNullOrEmpty(comboBox.Value?.ToString()))
-            {
-                ShowMessage("请先选择一个项目");
-                return;
-            }
-
-            string selectedItemId = comboBox.Value.ToString();
-            
-            // 检查是否已经加载过该项目，避免重复加载
-            if (loadedItems.Contains(selectedItemId))
-            {
-                ShowMessage("此项目数据已经加载，请选择其他项目");
-                return;
-            }
-
-            // 从Oracle获取数据
-            DataTable dtResults = GetDataFromOracle(selectedItemId);
-            
-            if (dtResults != null && dtResults.Rows.Count > 0)
-            {
-                // 获取当前GridView的数据源
-                DataTable currentData = Session["GridData"] as DataTable;
-                if (currentData == null)
-                {
-                    currentData = new DataTable();
-                    // 根据dtResults创建相同结构的表
-                    foreach (DataColumn col in dtResults.Columns)
-                    {
-                        currentData.Columns.Add(col.ColumnName, col.DataType);
-                    }
-                }
-
-                // 将新数据合并到当前数据中
-                foreach (DataRow row in dtResults.Rows)
-                {
-                    currentData.ImportRow(row);
-                }
-
-                // 更新GridView
-                gridData.DataSource = currentData;
-                gridData.DataBind();
-                
-                // 保存到Session
-                Session["GridData"] = currentData;
-                
-                // 添加到已加载项目列表
-                loadedItems.Add(selectedItemId);
-                Session["LoadedItems"] = loadedItems;
-                
-                ShowMessage("数据已成功加载");
-            }
-            else
-            {
-                ShowMessage("未找到相关数据");
-            }
-        }
-
-        private DataTable GetDataFromOracle(string itemId)
-        {
-            DataTable dt = new DataTable();
-            
-            // 获取连接字符串
-            string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
-            
-            using (OracleConnection conn = new OracleConnection(connectionString))
-            {
-                try
-                {
-                    conn.Open();
-                    
-                    // 创建命令并添加参数
-                    using (OracleCommand cmd = new OracleCommand("SELECT * FROM YOUR_DATA_TABLE WHERE ITEM_ID = :ItemId", conn))
-                    {
-                        cmd.Parameters.Add(new OracleParameter("ItemId", OracleDbType.Varchar2)).Value = itemId;
-                        
-                        // 填充DataTable
-                        using (OracleDataAdapter adapter = new OracleDataAdapter(cmd))
-                        {
-                            adapter.Fill(dt);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // 记录错误
-                    System.Diagnostics.Debug.WriteLine("Oracle查询错误: " + ex.Message);
-                    ShowMessage("获取数据时发生错误: " + ex.Message);
-                }
-            }
-            
-            return dt;
-        }
-
-        private void SaveDataToOracle()
-        {
-            // 获取当前GridView的数据
-            DataTable currentData = Session["GridData"] as DataTable;
-            if (currentData == null || currentData.Rows.Count == 0)
-            {
-                ShowMessage("没有数据可以保存");
-                return;
-            }
-
-            // 保存数据到Oracle
-            if (SaveDataTableToOracle(currentData))
-            {
-                ShowMessage("数据已成功保存到数据库");
-            }
-            else
-            {
-                ShowMessage("保存数据时发生错误");
-            }
-        }
-
-        private bool SaveDataTableToOracle(DataTable dt)
-        {
-            bool success = true;
-            string connectionString = ConfigurationManager.ConnectionStrings["OracleConnection"].ConnectionString;
-            
-            using (OracleConnection conn = new OracleConnection(connectionString))
-            {
-                try
-                {
-                    conn.Open();
-                    
-                    // 遍历DataTable中的每一行
-                    foreach (DataRow row in dt.Rows)
-                    {
-                        // 检查此行是否已经存在于数据库中
-                        bool rowExists = CheckIfRowExists(conn, row["ID"].ToString());
-                        
-                        if (!rowExists)
-                        {
-                            // 插入新行
-                            using (OracleCommand cmd = new OracleCommand())
-                            {
-                                cmd.Connection = conn;
-                                cmd.CommandText = "INSERT INTO YOUR_DATA_TABLE (ID, FIELD1, FIELD2, FIELD3) VALUES (:ID, :FIELD1, :FIELD2, :FIELD3)";
-                                
-                                cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = row["ID"].ToString();
-                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"] != DBNull.Value ? row["FIELD1"].ToString() : null;
-                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"] != DBNull.Value ? row["FIELD2"].ToString() : null;
-                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"] != DBNull.Value ? row["FIELD3"].ToString() : null;
-                                
-                                cmd.ExecuteNonQuery();
-                            }
-                        }
-                        else
-                        {
-                            // 更新现有行
-                            using (OracleCommand cmd = new OracleCommand())
-                            {
-                                cmd.Connection = conn;
-                                cmd.CommandText = "UPDATE YOUR_DATA_TABLE SET FIELD1 = :FIELD1, FIELD2 = :FIELD2, FIELD3 = :FIELD3 WHERE ID = :ID";
-                                
-                                cmd.Parameters.Add(new OracleParameter("FIELD1", OracleDbType.Varchar2)).Value = row["FIELD1"] != DBNull.Value ? row["FIELD1"].ToString() : null;
-                                cmd.Parameters.Add(new OracleParameter("FIELD2", OracleDbType.Varchar2)).Value = row["FIELD2"] != DBNull.Value ? row["FIELD2"].ToString() : null;
-                                cmd.Parameters.Add(new OracleParameter("FIELD3", OracleDbType.Varchar2)).Value = row["FIELD3"] != DBNull.Value ? row["FIELD3"].ToString() : null;
-                                cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = row["ID"].ToString();
-                                
-                                cmd.ExecuteNonQuery();
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // 记录错误
-                    System.Diagnostics.Debug.WriteLine("Oracle保存错误: " + ex.Message);
-                    ShowMessage("保存数据时发生错误: " + ex.Message);
-                    success = false;
-                }
-            }
-            
-            return success;
-        }
-
-        private bool CheckIfRowExists(OracleConnection conn, string id)
-        {
-            using (OracleCommand cmd = new OracleCommand("SELECT COUNT(*) FROM YOUR_DATA_TABLE WHERE ID = :ID", conn))
-            {
-                cmd.Parameters.Add(new OracleParameter("ID", OracleDbType.Varchar2)).Value = id;
-                int count = Convert.ToInt32(cmd.ExecuteScalar());
-                return count > 0;
-            }
-        }
-
-        protected void gridData_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
-        {
-            // 生成新的ID
-            string newId = Guid.NewGuid().ToString("N").Substring(0, 10);
-            e.NewValues["ID"] = newId;
-            
-            // 获取当前GridView的数据
-            DataTable currentData = Session["GridData"] as DataTable;
-            
-            // 创建新行并填充数据
-            DataRow newRow = currentData.NewRow();
-            foreach (var field in e.NewValues.Keys)
-            {
-                newRow[field.ToString()] = e.NewValues[field] ?? DBNull.Value;
-            }
-            
-            // 添加新行到DataTable
-            currentData.Rows.Add(newRow);
-            
-            // 更新Session和GridView
-            Session["GridData"] = currentData;
-            gridData.DataSource = currentData;
-            gridData.DataBind();
-            
-            // 取消默认插入操作，因为我们已经手动处理了
-            e.Cancel = true;
-        }
-
-        protected void gridData_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
-        {
-            // 获取当前GridView的数据
-            DataTable currentData = Session["GridData"] as DataTable;
-            
-            // 找到要更新的行
-            string idToUpdate = e.Keys["ID"].ToString();
-            DataRow[] rowsToUpdate = currentData.Select("ID = '" + idToUpdate + "'");
-            
-            if (rowsToUpdate.Length > 0)
-            {
-                // 更新行数据
-                foreach (var field in e.NewValues.Keys)
-                {
-                    rowsToUpdate[0][field.ToString()] = e.NewValues[field] ?? DBNull.Value;
-                }
-                
-                // 更新Session和GridView
-                Session["GridData"] = currentData;
-                gridData.DataSource = currentData;
-                gridData.DataBind();
-            }
-            
-            // 取消默认更新操作，因为我们已经手动处理了
-            e.Cancel = true;
-        }
-
-        private void ShowMessage(string message)
-        {
-            // 显示消息给用户
-            ScriptManager.RegisterStartupScript(this, GetType(), "alert", $"alert('{message}');", true);
+            combo.DataSource = reader;
+            combo.ValueField = "id";
+            combo.TextField = "name";
+            combo.DataBind();
         }
     }
 }
 
-// Web.config配置 (关键部分)
-<!-- 
-在Web.config文件中添加以下连接字符串配置:
 
-<configuration>
-  <connectionStrings>
-    <add name="OracleConnection" 
-         connectionString="Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=您的Oracle服务器)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=您的服务名)));User Id=用户名;Password=密码;" 
-         providerName="Oracle.ManagedDataAccess.Client" />
-  </connectionStrings>
-  
-  <!-- 其他配置... -->
-</configuration>
--->
+⸻
+
+小結
+	•	用 FindControl("ddlOracleData") 是處理這類 <Template> 裡控制項最簡單穩定的方式。
+	•	你不需要用 FindToolbarItem，也不需要 TemplateControl。
+	•	請確保 ASPxComboBox 的 ID 是正確且唯一的。
+
+如果還是抓不到控制項，我可以幫你做個最小範例 demo。需要嗎？
