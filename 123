@@ -1,83 +1,66 @@
-很好，你的狀況代表你使用的 ASPxGridView.Toolbars[0].Items[0] 是 非 Template 類型的 ToolbarItem，但你在 ASPX 中已經用了 <Template> 包住 ASPxComboBox，這表示你其實是用了 Template ToolbarItem，但在後端嘗試用錯方式存取。
+太好了！你成功抓到資料了！
 
-下面是你該怎麼做的正確方式：
-
-⸻
-
-完整作法：用 ASPxGridView.FindControl 找 ComboBox
-
-既然你在 Toolbar 中加的是 <Template>，那 ASPxComboBox 會在 GridView 的控制項樹下，你可以用：
-
-var combo = ASPxGridView1.FindControl("ddlOracleData") as ASPxComboBox;
-
+現在你想讓 ASPxComboBox 的寬度能夠自動配合選項內容寬度，DevExpress 原生不直接支援 “Auto Width”，但你可以透過以下技巧達到類似效果：
 
 ⸻
 
-最終建議範例
+方式 1：使用 JavaScript 動態調整寬度（推薦）
 
-ASPX：
+<dx:ASPxComboBox ID="ddlOracleData" runat="server"
+                 ClientInstanceName="ddlOracleData"
+                 Width="Auto"
+                 OnLoad="ddlOracleData_Load">
+    <ClientSideEvents Init="function(s, e) {
+        adjustComboWidth(s);
+    }" />
+</dx:ASPxComboBox>
 
-<dx:ASPxGridView ID="ASPxGridView1" runat="server" AutoGenerateColumns="False">
-    <Settings ShowToolbar="True" />
-    <Toolbars>
-        <dx:GridViewToolbar>
-            <Items>
-                <dx:GridViewToolbarItem>
-                    <Template>
-                        <dx:ASPxComboBox ID="ddlOracleData" runat="server"
-                                         Width="200px"
-                                         ValueField="ID"
-                                         TextField="NAME"
-                                         DropDownStyle="DropDownList" />
-                    </Template>
-                </dx:GridViewToolbarItem>
-            </Items>
-        </dx:GridViewToolbar>
-    </Toolbars>
-</dx:ASPxGridView>
-
-
-⸻
-
-C# (.aspx.cs)：
-
-protected void Page_Load(object sender, EventArgs e)
-{
-    if (!IsPostBack)
-    {
-        BindComboBoxFromOracle();
-    }
-}
-
-private void BindComboBoxFromOracle()
-{
-    ASPxComboBox combo = ASPxGridView1.FindControl("ddlOracleData") as ASPxComboBox;
-    if (combo == null)
-        return;
-
-    string connStr = "User Id=xxx;Password=xxx;Data Source=your_tns";
-    string sql = "SELECT id, name FROM sample_table ORDER BY name";
-
-    using (var conn = new OracleConnection(connStr))
-    using (var cmd = new OracleCommand(sql, conn))
-    {
-        conn.Open();
-        using (var reader = cmd.ExecuteReader())
-        {
-            combo.DataSource = reader;
-            combo.ValueField = "id";
-            combo.TextField = "name";
-            combo.DataBind();
+<script type="text/javascript">
+    function adjustComboWidth(combo) {
+        var longestText = '';
+        for (var i = 0; i < combo.GetItemCount(); i++) {
+            var item = combo.GetItem(i);
+            if (item.text.length > longestText.length) {
+                longestText = item.text;
+            }
         }
+
+        // 建立一個暫時元素計算文字寬度
+        var span = document.createElement('span');
+        span.style.visibility = 'hidden';
+        span.style.whiteSpace = 'nowrap';
+        span.style.font = getComputedStyle(combo.GetMainElement()).font;
+        span.innerText = longestText;
+        document.body.appendChild(span);
+
+        var width = span.offsetWidth + 30; // 加 padding
+        document.body.removeChild(span);
+
+        combo.SetWidth(width);
     }
-}
+</script>
 
 
 ⸻
 
-小結
-	•	用 FindControl("ddlOracleData") 是處理這類 <Template> 裡控制項最簡單穩定的方式。
-	•	你不需要用 FindToolbarItem，也不需要 TemplateControl。
-	•	請確保 ASPxComboBox 的 ID 是正確且唯一的。
+方式 2：DropDown 本身寬度自動調整（非控制項寬）
 
-如果還是抓不到控制項，我可以幫你做個最小範例 demo。需要嗎？
+如果你只想讓 下拉選單寬度配合選項（而不是整個控制項寬度），可以設定：
+
+ddlOracleData.DropDownWidth = Unit.Auto;
+
+或在 ASPX：
+
+DropDownWidth="Auto"
+
+但這只會影響 展開選單的寬度，不會讓整個 ComboBox 自動配合最長的項目。
+
+⸻
+
+小提醒：
+	•	如果值有中文字，字寬計算建議用 span.innerHTML = longestText; 會更準確。
+	•	記得設定 ClientInstanceName，才能在 JavaScript 中操作這個 ComboBox。
+
+⸻
+
+需要我幫你整合這段進你的現有頁面範例中嗎？
