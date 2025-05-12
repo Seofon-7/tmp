@@ -1,33 +1,21 @@
 
-SELECT t.*
-FROM your_table t
+SELECT *
+FROM test_data t
 WHERE EXISTS (
     SELECT 1
     FROM (
-        -- 後段大括號變數 v1;v2;v100...
         SELECT REGEXP_SUBSTR(
-                   LOWER(REPLACE(REGEXP_SUBSTR(t.column_data, '\{([^}]*)\}$', 1, 1, NULL, 1)), ' ', ''),
-                   'v\d+', 1, LEVEL
-               ) AS v_var
+                   REGEXP_SUBSTR(t.column_data, '^\{([^}]*)\}', 1, 1, NULL, 1),
+                   '[^;]+', 1, LEVEL
+               ) AS pair
         FROM dual
         CONNECT BY REGEXP_SUBSTR(
-                       LOWER(REPLACE(REGEXP_SUBSTR(t.column_data, '\{([^}]*)\}$', 1, 1, NULL, 1)), ' ', ''),
-                       'v\d+', 1, LEVEL
+                       REGEXP_SUBSTR(t.column_data, '^\{([^}]*)\}', 1, 1, NULL, 1),
+                       '[^;]+', 1, LEVEL
                    ) IS NOT NULL
-    ) back_vars
-    WHERE back_vars.v_var IS NOT NULL
-      AND back_vars.v_var NOT IN (
-          -- 前段定義過的 v 名稱
-          SELECT REGEXP_SUBSTR(
-                     LOWER(REPLACE(REGEXP_SUBSTR(t.column_data, '^\{([^}]*)\}', 1, 1, NULL, 1)), ' ', ''),
-                     'v\d+', 1, LEVEL
-                 )
-          FROM dual
-          CONNECT BY REGEXP_SUBSTR(
-                         LOWER(REPLACE(REGEXP_SUBSTR(t.column_data, '^\{([^}]*)\}', 1, 1, NULL, 1)), ' ', ''),
-                         'v\d+', 1, LEVEL
-                     ) IS NOT NULL
-      )
+    )
+    WHERE pair IS NOT NULL
+      AND NOT REGEXP_LIKE(pair, '^v\d+=@M1:\d+W0:w\*$')
 );
 
 以下是完整範例，符合你需求：
