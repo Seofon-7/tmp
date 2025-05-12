@@ -16,7 +16,7 @@ WHERE EXISTS (
     )
     WHERE pair IS NOT NULL
       AND NOT REGEXP_LIKE(pair, '^v\d+=@M1:\d+W0:w\*$')
-);
+)
 
 以下是完整範例，符合你需求：
 
