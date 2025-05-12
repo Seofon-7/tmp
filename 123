@@ -3,9 +3,8 @@ SELECT *
 FROM your_table
 WHERE NOT REGEXP_LIKE(
     your_column,
-    '^\{(v[0-9]+=@M1:[0-9]+W0:w\*;)*v[0-9]+=@M1:[0-9]+W0:w\*\}\{(v[0-9]+;)*v[0-9]+\}$'
+    '^\{(v[0-9]+=@M1:[0-9]+W0:w\*;)*(v[0-9]+=@M1:[0-9]+W0:w\*)\}'
 );
-
 
 
 
