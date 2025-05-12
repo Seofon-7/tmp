@@ -1,9 +1,14 @@
 
 SELECT *
 FROM your_table
-WHERE NOT REGEXP_LIKE(
-    REGEXP_SUBSTR(your_column, '^\{.*?\}'),
-    '^\{(v[0-9]+=@M1:[0-9]+W0:w\*;)*v[0-9]+=@M1:[0-9]+W0:w\*\}$'
+WHERE EXISTS (
+  SELECT 1
+  FROM (
+    SELECT REGEXP_SUBSTR(your_column, 'v[0-9]+=[^;\\}]+', 1, LEVEL) AS item
+    FROM dual
+    CONNECT BY REGEXP_SUBSTR(your_column, 'v[0-9]+=[^;\\}]+', 1, LEVEL) IS NOT NULL
+  )
+  WHERE INSTR(item, '@M1:') = 0
 );
 
 
