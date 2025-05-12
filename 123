@@ -1,66 +1,255 @@
-太好了！你成功抓到資料了！
+以下是完整範例，符合你需求：
 
-現在你想讓 ASPxComboBox 的寬度能夠自動配合選項內容寬度，DevExpress 原生不直接支援 “Auto Width”，但你可以透過以下技巧達到類似效果：
+✅ 環境條件
+	•	ASP.NET WebForms
+	•	.NET Framework 4.6.2
+	•	DevExpress 19.2
+	•	Oracle 資料庫
+	•	功能
+	1.	Toolbar 有下拉選單與「載入資料」按鈕
+	2.	從 Oracle 撈出資料後插入 GridView
+	3.	Grid 支援 Inline Editing
+	4.	有「儲存」按鈕，將資料寫入 Oracle
+	5.	避免重複載入相同資料（根據主鍵）
 
 ⸻
 
-方式 1：使用 JavaScript 動態調整寬度（推薦）
+✅ ASPX 前端（Default.aspx）
 
-<dx:ASPxComboBox ID="ddlOracleData" runat="server"
-                 ClientInstanceName="ddlOracleData"
-                 Width="Auto"
-                 OnLoad="ddlOracleData_Load">
-    <ClientSideEvents Init="function(s, e) {
-        adjustComboWidth(s);
-    }" />
-</dx:ASPxComboBox>
+<%@ Register Assembly="DevExpress.Web.v19.2" Namespace="DevExpress.Web" TagPrefix="dx" %>
 
-<script type="text/javascript">
-    function adjustComboWidth(combo) {
-        var longestText = '';
-        for (var i = 0; i < combo.GetItemCount(); i++) {
-            var item = combo.GetItem(i);
-            if (item.text.length > longestText.length) {
-                longestText = item.text;
+<dx:ASPxGridView ID="gridView" runat="server" KeyFieldName="ITEM_CODE"
+    AutoGenerateColumns="False" Width="100%" OnRowUpdating="gridView_RowUpdating"
+    OnDataBinding="gridView_DataBinding" OnRowInserting="gridView_RowInserting"
+    OnRowDeleting="gridView_RowDeleting" OnInitNewRow="gridView_InitNewRow"
+    SettingsEditing-Mode="Inline">
+    
+    <Toolbars>
+        <dx:GridViewToolbar>
+            <Items>
+                <dx:GridViewToolbarItem>
+                    <Template>
+                        <dx:ASPxComboBox ID="ddlGroupSelect" runat="server" Width="200px" DropDownStyle="DropDownList" />
+                        <dx:ASPxButton ID="btnLoadGroup" runat="server" Text="載入資料" AutoPostBack="true" OnClick="btnLoadGroup_Click" />
+                        <dx:ASPxButton ID="btnSave" runat="server" Text="儲存" AutoPostBack="true" OnClick="btnSave_Click" />
+                    </Template>
+                </dx:GridViewToolbarItem>
+            </Items>
+        </dx:GridViewToolbar>
+    </Toolbars>
+
+    <Columns>
+        <dx:GridViewCommandColumn ShowEditButton="true" ShowDeleteButton="true" ShowNewButtonInHeader="true" />
+        <dx:GridViewDataTextColumn FieldName="ITEM_CODE" Caption="代碼" />
+        <dx:GridViewDataTextColumn FieldName="ITEM_NAME" Caption="名稱" />
+        <dx:GridViewDataTextColumn FieldName="ITEM_DESC" Caption="說明" />
+    </Columns>
+</dx:ASPxGridView>
+
+
+⸻
+
+✅ C# 後端（Default.aspx.cs）
+
+using System;
+using System.Data;
+using System.Linq;
+using System.Web.UI;
+using Oracle.ManagedDataAccess.Client;
+
+public partial class _Default : Page
+{
+    private string connStr = "User Id=your_user;Password=your_pass;Data Source=your_tns";
+
+    protected void Page_Load(object sender, EventArgs e)
+    {
+        if (!IsPostBack)
+            LoadComboBoxData();
+    }
+
+    private void LoadComboBoxData()
+    {
+        using (var conn = new OracleConnection(connStr))
+        {
+            conn.Open();
+            var cmd = new OracleCommand("SELECT CODE, NAME FROM TABLE_A ORDER BY NAME", conn);
+            var reader = cmd.ExecuteReader();
+            ddlGroupSelect.Items.Clear();
+            while (reader.Read())
+                ddlGroupSelect.Items.Add(reader["NAME"].ToString(), reader["CODE"].ToString());
+        }
+    }
+
+    protected void btnLoadGroup_Click(object sender, EventArgs e)
+    {
+        string groupCode = ddlGroupSelect.Value?.ToString();
+        if (string.IsNullOrEmpty(groupCode)) return;
+
+        DataTable newData = GetDataFromTableB(groupCode);
+        DataTable existing = GetGridData();
+
+        // 避免重複插入（以 ITEM_CODE 為主鍵）
+        foreach (DataRow row in newData.Rows)
+        {
+            string code = row["ITEM_CODE"].ToString();
+            if (!existing.AsEnumerable().Any(r => r["ITEM_CODE"].ToString() == code))
+                existing.ImportRow(row);
+        }
+
+        ViewState["GridData"] = existing;
+        gridView.DataBind();
+    }
+
+    private DataTable GetDataFromTableB(string groupCode)
+    {
+        using (var conn = new OracleConnection(connStr))
+        {
+            conn.Open();
+            string sql = "SELECT ITEM_CODE, ITEM_NAME, ITEM_DESC FROM TABLE_B WHERE GROUP_CODE = :code";
+            var cmd = new OracleCommand(sql, conn);
+            cmd.Parameters.Add("code", groupCode);
+            var adapter = new OracleDataAdapter(cmd);
+            DataTable dt = new DataTable();
+            adapter.Fill(dt);
+            return dt;
+        }
+    }
+
+    private DataTable GetGridData()
+    {
+        if (ViewState["GridData"] == null)
+        {
+            DataTable dt = new DataTable();
+            dt.Columns.Add("ITEM_CODE");
+            dt.Columns.Add("ITEM_NAME");
+            dt.Columns.Add("ITEM_DESC");
+            ViewState["GridData"] = dt;
+        }
+        return (DataTable)ViewState["GridData"];
+    }
+
+    protected void gridView_DataBinding(object sender, EventArgs e)
+    {
+        gridView.DataSource = GetGridData();
+    }
+
+    protected void gridView_RowUpdating(object sender, DevExpress.Web.Data.ASPxDataUpdatingEventArgs e)
+    {
+        DataTable dt = GetGridData();
+        string key = e.Keys["ITEM_CODE"].ToString();
+
+        DataRow row = dt.Rows.Find(key) ?? dt.AsEnumerable().FirstOrDefault(r => r["ITEM_CODE"].ToString() == key);
+        if (row != null)
+        {
+            row["ITEM_NAME"] = e.NewValues["ITEM_NAME"];
+            row["ITEM_DESC"] = e.NewValues["ITEM_DESC"];
+        }
+
+        ViewState["GridData"] = dt;
+        e.Cancel = true;
+        gridView.CancelEdit();
+        gridView.DataBind();
+    }
+
+    protected void gridView_RowInserting(object sender, DevExpress.Web.Data.ASPxDataInsertingEventArgs e)
+    {
+        DataTable dt = GetGridData();
+        DataRow newRow = dt.NewRow();
+        newRow["ITEM_CODE"] = e.NewValues["ITEM_CODE"];
+        newRow["ITEM_NAME"] = e.NewValues["ITEM_NAME"];
+        newRow["ITEM_DESC"] = e.NewValues["ITEM_DESC"];
+        dt.Rows.Add(newRow);
+
+        ViewState["GridData"] = dt;
+        e.Cancel = true;
+        gridView.CancelEdit();
+        gridView.DataBind();
+    }
+
+    protected void gridView_RowDeleting(object sender, DevExpress.Web.Data.ASPxDataDeletingEventArgs e)
+    {
+        DataTable dt = GetGridData();
+        string key = e.Keys["ITEM_CODE"].ToString();
+        DataRow row = dt.AsEnumerable().FirstOrDefault(r => r["ITEM_CODE"].ToString() == key);
+        if (row != null)
+            dt.Rows.Remove(row);
+
+        ViewState["GridData"] = dt;
+        e.Cancel = true;
+        gridView.DataBind();
+    }
+
+    protected void gridView_InitNewRow(object sender, DevExpress.Web.Data.ASPxDataInitNewRowEventArgs e)
+    {
+        e.NewValues["ITEM_CODE"] = "";
+        e.NewValues["ITEM_NAME"] = "";
+        e.NewValues["ITEM_DESC"] = "";
+    }
+
+    protected void btnSave_Click(object sender, EventArgs e)
+    {
+        DataTable dt = GetGridData();
+        using (var conn = new OracleConnection(connStr))
+        {
+            conn.Open();
+            foreach (DataRow row in dt.Rows)
+            {
+                string code = row["ITEM_CODE"].ToString();
+
+                // Check if exists
+                var checkCmd = new OracleCommand("SELECT COUNT(*) FROM TABLE_B WHERE ITEM_CODE = :code", conn);
+                checkCmd.Parameters.Add("code", code);
+                int count = Convert.ToInt32(checkCmd.ExecuteScalar());
+
+                if (count == 0)
+                {
+                    var insertCmd = new OracleCommand(
+                        @"INSERT INTO TABLE_B (ITEM_CODE, ITEM_NAME, ITEM_DESC, GROUP_CODE)
+                          VALUES (:code, :name, :desc, :groupCode)", conn);
+
+                    insertCmd.Parameters.Add("code", row["ITEM_CODE"]);
+                    insertCmd.Parameters.Add("name", row["ITEM_NAME"]);
+                    insertCmd.Parameters.Add("desc", row["ITEM_DESC"]);
+                    insertCmd.Parameters.Add("groupCode", ddlGroupSelect.Value?.ToString());
+
+                    insertCmd.ExecuteNonQuery();
+                }
+                else
+                {
+                    var updateCmd = new OracleCommand(
+                        @"UPDATE TABLE_B SET ITEM_NAME = :name, ITEM_DESC = :desc
+                          WHERE ITEM_CODE = :code", conn);
+
+                    updateCmd.Parameters.Add("name", row["ITEM_NAME"]);
+                    updateCmd.Parameters.Add("desc", row["ITEM_DESC"]);
+                    updateCmd.Parameters.Add("code", row["ITEM_CODE"]);
+
+                    updateCmd.ExecuteNonQuery();
+                }
             }
         }
 
-        // 建立一個暫時元素計算文字寬度
-        var span = document.createElement('span');
-        span.style.visibility = 'hidden';
-        span.style.whiteSpace = 'nowrap';
-        span.style.font = getComputedStyle(combo.GetMainElement()).font;
-        span.innerText = longestText;
-        document.body.appendChild(span);
-
-        var width = span.offsetWidth + 30; // 加 padding
-        document.body.removeChild(span);
-
-        combo.SetWidth(width);
+        ScriptManager.RegisterStartupScript(this, GetType(), "saveMsg", "alert('儲存成功！');", true);
     }
-</script>
+}
 
 
 ⸻
 
-方式 2：DropDown 本身寬度自動調整（非控制項寬）
+🔒 資料庫結構假設
 
-如果你只想讓 下拉選單寬度配合選項（而不是整個控制項寬度），可以設定：
+TABLE_A
 
-ddlOracleData.DropDownWidth = Unit.Auto;
+CODE	NAME
+G001	群組一
+G002	群組二
 
-或在 ASPX：
+TABLE_B
 
-DropDownWidth="Auto"
+ITEM_CODE	ITEM_NAME	ITEM_DESC	GROUP_CODE
+A001	項目1	說明1	G001
 
-但這只會影響 展開選單的寬度，不會讓整個 ComboBox 自動配合最長的項目。
-
-⸻
-
-小提醒：
-	•	如果值有中文字，字寬計算建議用 span.innerHTML = longestText; 會更準確。
-	•	記得設定 ClientInstanceName，才能在 JavaScript 中操作這個 ComboBox。
 
 ⸻
 
-需要我幫你整合這段進你的現有頁面範例中嗎？
+是否需要我也幫你產生 SQL 建表語法與測試資料？
