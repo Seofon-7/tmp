@@ -1,22 +1,10 @@
 
 SELECT *
-FROM test_data t
-WHERE EXISTS (
-    SELECT 1
-    FROM (
-        SELECT REGEXP_SUBSTR(
-                   REGEXP_SUBSTR(t.column_data, '^\{([^}]*)\}', 1, 1, NULL, 1),
-                   '[^;]+', 1, LEVEL
-               ) AS pair
-        FROM dual
-        CONNECT BY REGEXP_SUBSTR(
-                       REGEXP_SUBSTR(t.column_data, '^\{([^}]*)\}', 1, 1, NULL, 1),
-                       '[^;]+', 1, LEVEL
-                   ) IS NOT NULL
-    )
-    WHERE pair IS NOT NULL
-      AND NOT REGEXP_LIKE(pair, '^v\d+=@M1:\d+W0:w\*$')
-)
+FROM test_data
+WHERE NOT REGEXP_LIKE(
+    REGEXP_SUBSTR(column_data, '^\{([^}]*)\}', 1, 1, NULL, 1),
+    '^v\d+=@M1:\d+W0:w\*(;v\d+=@M1:\d+W0:w\*)*$'
+);
 
 以下是完整範例，符合你需求：
 
