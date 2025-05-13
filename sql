@@ -1,101 +1,75 @@
-你使用的是 DevExpress 的 ASPxGridView 和 GridViewToolbarItem，其中包含一個 ComboBox，你希望當使用者變更下拉選單的選項時，觸發 C# 的伺服端程式碼（即 .cs 裡的 function）。這在 DevExpress 中可以透過下列步驟實作：
+這個狀況很常見，發生的原因通常是 ComboBox 在頁面回傳（postback 或 callback）後資料被重新綁定了，導致選取的值消失或被重設。
 
 ⸻
 
-Step 1：定義 ToolbarItem 並加入 ComboBox
+問題根本原因
 
-你需要在 ASPX 頁面上定義一個 ComboBox ToolbarItem，並指定 ClientInstanceName 以便用 JavaScript 操作它。
+在 Page_Load 或 cbxFilter_Init 裡，如果你重新設定了 ComboBox 的 DataSource 並 DataBind()，但沒有還原使用者剛選取的值，ComboBox 就會變空或顯示錯誤的項目。
 
-<dx:ASPxGridView ID="grid" runat="server" ...>
-    <SettingsToolbar ShowToolbars="True" />
-    <Toolbars>
-        <dx:GridViewToolbar>
-            <Items>
-                <dx:GridViewToolbarItem>
-                    <Template>
-                        <dx:ASPxComboBox ID="cbxFilter" runat="server"
-                            Width="150px"
-                            ClientInstanceName="cbxFilter"
-                            AutoPostBack="False"
-                            OnInit="cbxFilter_Init">
-                        </dx:ASPxComboBox>
-                    </Template>
-                </dx:GridViewToolbarItem>
-            </Items>
-        </dx:GridViewToolbar>
-    </Toolbars>
-</dx:ASPxGridView>
+⸻
+
+解法一：只在非回傳時綁定資料
+
+你可以把 ComboBox 的初始化放在 !IsPostBack 判斷內，這樣就不會在選完之後再重設值：
+
+protected void cbxFilter_Init(object sender, EventArgs e)
+{
+    if (!IsPostBack)
+    {
+        ASPxComboBox comboBox = sender as ASPxComboBox;
+        comboBox.DataSource = GetYourData(); // 資料來源
+        comboBox.TextField = "DisplayName";
+        comboBox.ValueField = "ID";
+        comboBox.DataBind();
+    }
+}
 
 
 ⸻
 
-Step 2：在後端初始化 ComboBox 資料（OnInit）
+解法二：手動設定選取的值（如果值保存在 Session 裡）
+
+如果你是在 ASPxCallback 儲存選取值進 Session，可以在 Page_Load 或 cbxFilter_Init 裡設回選取值：
 
 protected void cbxFilter_Init(object sender, EventArgs e)
 {
     ASPxComboBox comboBox = sender as ASPxComboBox;
-    comboBox.DataSource = GetYourData(); // 這是你從資料庫撈資料的 function
+    comboBox.DataSource = GetYourData();
     comboBox.TextField = "DisplayName";
     comboBox.ValueField = "ID";
     comboBox.DataBind();
-}
 
-
-⸻
-
-Step 3：加上 JavaScript 用來呼叫 Callback
-
-你需要一個 ASPxCallback 控制項來從前端觸發後端程式。
-
-ASPX：
-
-<dx:ASPxCallback ID="cbComboCallback" runat="server" ClientInstanceName="cbComboCallback"
-    OnCallback="cbComboCallback_Callback">
-</dx:ASPxCallback>
-
-JavaScript：
-
-<script type="text/javascript">
-    function OnComboBoxChanged(s, e) {
-        var selectedValue = s.GetValue();
-        cbComboCallback.PerformCallback(selectedValue);
+    // 如果 Session 有儲存選擇值，就設回去
+    if (Session["SelectedFilterValue"] != null)
+    {
+        comboBox.Value = Session["SelectedFilterValue"].ToString();
     }
-</script>
-
-將上面的 OnComboBoxChanged 綁定到 ComboBox：
-
-<dx:ASPxComboBox ... ClientInstanceName="cbxFilter" ClientSideEvents-SelectedIndexChanged="OnComboBoxChanged" />
-
-
-⸻
-
-Step 4：處理後端 Callback
-
-protected void cbComboCallback_Callback(object source, DevExpress.Web.CallbackEventArgs e)
-{
-    string selectedValue = e.Parameter;
-    // 根據選取的值執行邏輯，例如重新查詢資料或更新 Grid
-    // 你可以儲存 ViewState 或 Session，然後 Rebind Grid
-    // grid.DataSource = GetFilteredData(selectedValue);
-    // grid.DataBind();
 }
 
+注意：這段不要包在 !IsPostBack 裡，因為你希望每次都能設定值回去。
 
 ⸻
 
-Bonus：Grid Rebinding（可選）
+解法三：在 Client 端設定回選值（不推薦）
 
-如果你希望在選擇變更時刷新 GridView，可以在 Callback 中呼叫 grid.DataBind() 或加入另一個 CallbackPanel 包住 Grid。
+如果不想在後端處理，也可以在 Callback 成功後手動再設定 ComboBox 的值：
+
+function OnComboBoxChanged(s, e) {
+    var selectedValue = s.GetValue();
+    cbComboCallback.PerformCallback(selectedValue);
+    // 確保選項不會因畫面重繪被清掉
+    cbxFilter.SetValue(selectedValue);
+}
+
+這是個補救方式，不過若後端還是重綁資料，這樣也會失效。
 
 ⸻
 
-總結
+總結：建議做法
+	1.	cbxFilter_Init 一律做 DataBind()，但一定要在 DataBind() 後設回 Value。
+	2.	若資料只需要一次載入，可在 !IsPostBack 做 DataBind()，但要保證值可被記住。
+	3.	不建議用 client-side 手動設值來解問題，除非前端完全控制選單資料。
 
-動作	技術
-初始化下拉選單	ComboBox.Init 事件從 DB 撈資料
-使用者選擇變更	JavaScript 的 SelectedIndexChanged
-呼叫後端程式碼	使用 ASPxCallback
+⸻
 
-如果你希望整合 GridView 資料重新載入，也可以用 ASPxCallbackPanel 或 grid.PerformCallback(...) 來觸發。
-
-如果你提供目前的 ASPX 程式碼片段，我可以幫你進一步整合與簡化。
+如果你願意貼你的 cbxFilter_Init 實作，我可以幫你改成最安全的版本。
