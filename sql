@@ -1,80 +1,113 @@
-了解，你希望在 Oracle 11g 中，不改變原有 SQL 邏輯結構（即保留 LISTAGG 的串接方式），但又要 移除像 FR,FR;PR 這種結果中出現的重複值。由於 Oracle 11g 不支援 LISTAGG(DISTINCT ...)，這種情況可以使用一種替代方法來處理：先用 COLLECT + CAST(MULTISET) 聚合去重，再排序串接。
-
-✅ 解法：使用 XMLAGG + DISTINCT + ORDER BY 模擬 LISTAGG(DISTINCT) 效果
-
-這段 SQL 將會模擬 LISTAGG(DISTINCT c.class, ',') 的效果（Oracle 11g 可用）：
-
-SELECT
-    RTRIM(XMLAGG(XMLELEMENT(e, class || ',') ORDER BY class).EXTRACT('//text()'), ',') AS class_list
-FROM (
-    SELECT DISTINCT c.class
-    FROM fmea_report c
-) t;
-
-這段 SQL 的重點：
-	•	SELECT DISTINCT c.class：先從 fmea_report 表裡取出不重複的 class 值。
-	•	XMLAGG + XMLELEMENT：把這些值拼接起來，模擬 LISTAGG 效果。
-	•	RTRIM(..., ',')：去除最後多餘的逗號。
+如果你「不重構」整體架構（維持 DockPanel → ControlContainer → SplitContainerControl 的巢狀結構），仍然有方法緩解解析度變更導致控制項被壓縮甚至消失的問題，但效果會受限於原本的設計。不過以下幾招組合起來可達到「不重構也能改善體驗」的效果：
 
 ⸻
 
-如果你原本 SQL 是這樣：
+✅ 方法一：設定每個 SplitContainer 的 Panel 最小尺寸
 
-SELECT regexp_replace(
-    listagg(c.class , ',') within group (order by c.class),
-    '(([^,]+)(,\1)*(,|$)',
-    '\1\3'
-) AS result
-FROM fmea_report c;
+這是最關鍵的作法之一，防止 Panel 被壓縮成 0。
 
-但你想讓 listagg(c.class, ',') 的結果是 不重複的 class 字串，那可以改寫成這樣：
+範例（針對 DevExpress 的 SplitContainerControl）：
 
-SELECT regexp_replace(
-    RTRIM(
-        XMLAGG(XMLELEMENT(e, class || ',') ORDER BY class).EXTRACT('//text()'),
-        ','
-    ),
-    '(([^,]+)(,\2)+)',
-    '\2'
-) AS result
-FROM (
-    SELECT DISTINCT c.class
-    FROM fmea_report c
-) t;
+splitContainerControl1.Panel1.MinSize = 150;
+splitContainerControl1.Panel2.MinSize = 300;
+
+splitContainerControl2.Panel1.MinSize = 200;
+splitContainerControl2.Panel2.MinSize = 200;
+
+splitContainerControl3.Panel1.MinSize = 100;
+splitContainerControl3.Panel2.MinSize = 100;
+
+這樣在解析度變小時，至少會保有一定大小，不會整塊消失。
+
+⸻
+
+✅ 方法二：在 Form.Resize 時動態調整 Splitter 比例
+
+解析度改變或視窗大小調整時，手動控制各 Split 的比例可避免 UI 被壓縮不合理。
+
+範例：
+
+private void MainForm_Resize(object sender, EventArgs e)
+{
+    splitContainerControl2.SplitterPosition = splitContainerControl2.Height * 2 / 3;
+    splitContainerControl1.SplitterPosition = splitContainerControl1.Width / 3;
+    splitContainerControl3.SplitterPosition = splitContainerControl3.Height / 2;
+}
+
+記得掛上事件：
+
+this.Resize += MainForm_Resize;
 
 
 ⸻
 
-範例說明：
+✅ 方法三：針對小解析度，自動隱藏/摺疊非必要 Panel
 
-假設 fmea_report 中的 class 資料如下：
+你可以自動隱藏次要資訊區域（如 log/status 區），來保住主要內容（例如 Grid）。
 
-class
-FR
-PR
-FR
+範例（DevExpress）：
 
-那麼這段 SQL 的執行結果會是：
-
-FR,PR
-
-或如果你後續用分號 ; 做分群，也可以：
-
-REPLACE(
-    RTRIM(
-        XMLAGG(XMLELEMENT(e, class || ';') ORDER BY class).EXTRACT('//text()'),
-        ';'
-    ),
-    ',',
-    ';'
-)
+if (Screen.PrimaryScreen.Bounds.Width < 1366)
+{
+    splitContainerControl3.PanelVisibility = SplitPanelVisibility.Panel1; // 只顯示上方區
+}
+else
+{
+    splitContainerControl3.PanelVisibility = SplitPanelVisibility.Both;
+}
 
 
 ⸻
 
-小結
-	•	✅ 適用 Oracle 11g，不支援 LISTAGG(DISTINCT) 的限制。
-	•	✅ 不需要更動你太多原本的 SQL 結構。
-	•	✅ 可處理像 FR,FR;PR 這種重複的情況，將其去重為 FR;PR。
+✅ 方法四：加強控制項的 MinimumSize 設定
 
-如果你有更複雜的分組條件（例如還需要 GROUP BY report_id 這類），我也可以幫你調整。只要提供具體結構。
+避免 Button、Grid、TextBox 被壓成 0。
+
+範例：
+
+gridControl1.MinimumSize = new Size(400, 300);
+button1.MinimumSize = new Size(100, 30);
+
+
+⸻
+
+✅ 方法五：初始化時就設合理的分割比例
+
+若 Form 預設載入時比例不對，也會導致控制項顯示錯誤。可在 Form_Load 設定：
+
+private void MainForm_Load(object sender, EventArgs e)
+{
+    splitContainerControl2.SplitterPosition = this.Height * 2 / 3;
+    splitContainerControl1.SplitterPosition = this.Width / 4;
+}
+
+
+⸻
+
+✅ 方法六：啟用 DPI Awareness（.NET 4.6 以上建議）
+
+如果你發現解析度改變是因為 DPI 變動導致 UI 縮放不對，可以在 app.manifest 中開啟高 DPI 支援：
+
+<application xmlns="urn:schemas-microsoft-com:asm.v3">
+  <windowsSettings>
+    <dpiAware>true/pm</dpiAware>
+  </windowsSettings>
+</application>
+
+
+⸻
+
+📌 小結
+
+方法	是否需重構	成效	推薦程度
+設定 Panel MinSize	否	高	⭐⭐⭐⭐
+Resize 調整 Splitter	否	高	⭐⭐⭐⭐
+隱藏非必要 Panel	否	中	⭐⭐⭐
+控制項 MinimumSize	否	中	⭐⭐⭐
+初始化設定比例	否	中	⭐⭐⭐
+開啟 DPI Awareness	否	視情況	⭐⭐
+
+
+⸻
+
+如果你把上述設定都套用，其實在「不改 UI 架構」的前提下，也能大幅改善螢幕變動造成的顯示問題。如果你願意，我可以幫你寫一段完整的 Form_Load + Resize 管理邏輯範本，你只要套進去即可。需要嗎？
