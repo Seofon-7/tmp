@@ -1,62 +1,108 @@
-在 IBM Db2 中，catalog 通常是用來註冊遠端資料庫連線資訊，而不是「新增資料庫本身」。也就是說，你可以使用 CATALOG DATABASE 指令來將一個遠端或本地的 Db2 資料庫加到本機的資料庫目錄中，讓你可以使用簡單的別名來連線。
+你遇到的狀況（用了 SplitterPosition 方法後還是有 Panel 被壓縮到）很常見，這通常是因為：
+	1.	你設定了 SplitterPosition，但沒有設定 Panel 的 MinSize。
+	2.	Resize 時的位置運算比例不合理，超出 SplitContainer 可用空間。
+	3.	DevExpress 的 SplitContainerControl 特性：若空間不足，它會「自動犧牲 Panel2」。
 
 ⸻
 
-一、CATALOG DATABASE 的用途是什麼？
+✅ 建議你這樣做（組合策略）
 
-它不會建立資料庫，而是：
-	•	將現有的資料庫（無論是本地或遠端）加入到你的 Db2 環境中，方便你用資料庫別名（alias）來存取它。
-	•	常用於client machine 或 application server 上的設定。
+✅ 1. 設定每個 Panel 的 MinSize 是關鍵
 
-⸻
+這一步如果沒做，SplitterPosition 設了也會被 DevExpress 自動改掉。
 
-二、使用 CATALOG DATABASE 註冊資料庫
+splitContainerControl1.Panel1.MinSize = 150;
+splitContainerControl1.Panel2.MinSize = 300;
 
-1. 本地資料庫：
+splitContainerControl2.Panel1.MinSize = 200;
+splitContainerControl2.Panel2.MinSize = 300;
 
-db2 CATALOG DATABASE MYDB ON /home/db2inst1/db2data
-
-	•	MYDB 是資料庫的名字。
-	•	ON 是資料庫所在的本機路徑。
-
-2. 遠端資料庫（經過 TCP/IP）：
-
-第一步：設定 Node
-
-db2 CATALOG TCPIP NODE MYNODE REMOTE 192.168.1.100 SERVER 50000
-
-	•	MYNODE 是你定義的節點名稱。
-	•	REMOTE 是主機 IP 或主機名稱。
-	•	SERVER 是 Db2 埠號（預設 50000）。
-
-第二步：註冊資料庫
-
-db2 CATALOG DATABASE MYDB AS MYALIAS AT NODE MYNODE
-
-	•	MYDB 是遠端的資料庫名稱。
-	•	MYALIAS 是你要用來連線的別名。
-	•	MYNODE 是剛剛註冊的節點。
-
-第三步：驗證：
-
-db2 LIST DATABASE DIRECTORY
+splitContainerControl3.Panel1.MinSize = 150;
+splitContainerControl3.Panel2.MinSize = 150;
 
 
 ⸻
 
-三、連線測試
+✅ 2. Resize 時的比例演算法要考慮 MinSize
 
-db2 CONNECT TO MYALIAS USER dbuser USING password
+你原本這樣寫（示意）：
+
+splitContainerControl2.SplitterPosition = splitContainerControl2.Height * 2 / 3;
+
+這可能會讓 Panel1 過大、Panel2 壓縮。建議你 改成這種邏輯：
+
+✨ 範例：保底最小高度再決定 SplitterPosition
+
+private void MainForm_Resize(object sender, EventArgs e)
+{
+    int totalHeight = splitContainerControl2.Height;
+    int minPanel1 = splitContainerControl2.Panel1.MinSize;
+    int minPanel2 = splitContainerControl2.Panel2.MinSize;
+
+    int safePosition = totalHeight * 2 / 3;
+
+    // 確保不小於 MinSize 限制
+    if (safePosition < minPanel1)
+        safePosition = minPanel1;
+    if (totalHeight - safePosition < minPanel2)
+        safePosition = totalHeight - minPanel2;
+
+    splitContainerControl2.SplitterPosition = safePosition;
+}
+
+同理可以應用到橫向的 splitContainerControl1 和 splitContainerControl3。
+
+⸻
+
+✅ 3. 你可以用這段範本來保護所有 SplitContainer
+
+private void ResizeSplitContainer(SplitContainerControl container, bool isVertical, double ratio = 0.5)
+{
+    int total = isVertical ? container.Height : container.Width;
+    int min1 = container.Panel1.MinSize;
+    int min2 = container.Panel2.MinSize;
+
+    int desired = (int)(total * ratio);
+    if (desired < min1)
+        desired = min1;
+    if (total - desired < min2)
+        desired = total - min2;
+
+    container.SplitterPosition = desired;
+}
+
+在 Resize 事件中這樣呼叫：
+
+ResizeSplitContainer(splitContainerControl1, false, 0.3);
+ResizeSplitContainer(splitContainerControl2, true, 0.6);
+ResizeSplitContainer(splitContainerControl3, true, 0.5);
 
 
 ⸻
 
-四、建立資料庫（如果你真的要創建資料庫本身）
+✅ 4. 最後補強：初始化時就設一次，避免第一次顯示就壓縮
 
-db2 CREATE DATABASE MYDB
+在 Form_Load 設定一次初始值，與 Resize 中邏輯一致：
 
-這會在本地創建一個新的資料庫。只有在 Db2 server 上執行，client 不行。
+this.Load += (s, e) =>
+{
+    ResizeSplitContainer(splitContainerControl1, false, 0.3);
+    ResizeSplitContainer(splitContainerControl2, true, 0.6);
+    ResizeSplitContainer(splitContainerControl3, true, 0.5);
+};
+
 
 ⸻
 
-如果你可以說明你是要在 client 上設定資料庫連線，還是要 創建新的 Db2 資料庫，我可以給你更準確的步驟。
+✅ 小結（做完這幾件事，幾乎就不會再被壓縮）
+
+要點	狀態
+每個 Panel 設 MinSize	✅ 一定要做
+Splitter 計算時顧慮 MinSize	✅ 強烈建議
+初始也設比例（不是只靠 Resize）	✅ 強烈建議
+Panel2 被犧牲就調整比例回來	✅ 可修正
+
+
+⸻
+
+如果你願意，我可以根據你實際三個 SplitContainer 名稱和想要的預設比例幫你組一份完整 Resize 管理程式碼，要嗎？
